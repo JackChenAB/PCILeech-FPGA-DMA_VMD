@@ -45,7 +45,11 @@ module pcileech_tlps128_bar_controller(
     input                   bar_en,
     input [15:0]            pcie_id,
     IfAXIS128.sink_lite     tlps_in,
-    IfAXIS128.source        tlps_out
+    IfAXIS128.source        tlps_out,
+    // MSI-X中断信号 - 从VMD MSI-X模块输出
+    output                  msix_interrupt_valid,
+    output [63:0]           msix_interrupt_addr,
+    output [31:0]           msix_interrupt_data
 );
     
     // ------------------------------------------------------------------------
@@ -134,19 +138,24 @@ module pcileech_tlps128_bar_controller(
                         bar_rsp_valid[6] ? bar_rsp_data[6] : 0;
     assign rd_rsp_valid = bar_rsp_valid[0] || bar_rsp_valid[1] || bar_rsp_valid[2] || bar_rsp_valid[3] || bar_rsp_valid[4] || bar_rsp_valid[5] || bar_rsp_valid[6];
     
-    pcileech_bar_impl_zerowrite4k i_bar0(
-        .rst            ( rst                           ),
-        .clk            ( clk                           ),
-        .wr_addr        ( wr_addr                       ),
-        .wr_be          ( wr_be                         ),
-        .wr_data        ( wr_data                       ),
-        .wr_valid       ( wr_valid && wr_bar[0]         ),
-        .rd_req_ctx     ( rd_req_ctx                    ),
-        .rd_req_addr    ( rd_req_addr                   ),
-        .rd_req_valid   ( rd_req_valid && rd_req_bar[0] ),
-        .rd_rsp_ctx     ( bar_rsp_ctx[0]                ),
-        .rd_rsp_data    ( bar_rsp_data[0]               ),
-        .rd_rsp_valid   ( bar_rsp_valid[0]              )
+    // 使用VMD MSI-X模块实现BAR0功能，支持PCIe能力结构和MSI-X中断
+    pcileech_bar_impl_vmd_msix i_bar0(
+        .rst                    ( rst                           ),
+        .clk                    ( clk                           ),
+        .wr_addr                ( wr_addr                       ),
+        .wr_be                  ( wr_be                         ),
+        .wr_data                ( wr_data                       ),
+        .wr_valid               ( wr_valid && wr_bar[0]         ),
+        .rd_req_ctx             ( rd_req_ctx                    ),
+        .rd_req_addr            ( rd_req_addr                   ),
+        .rd_req_valid           ( rd_req_valid && rd_req_bar[0] ),
+        .rd_rsp_ctx             ( bar_rsp_ctx[0]                ),
+        .rd_rsp_data            ( bar_rsp_data[0]               ),
+        .rd_rsp_valid           ( bar_rsp_valid[0]              ),
+        // MSI-X中断输出信号:
+        .msix_interrupt_valid   ( msix_interrupt_valid          ),
+        .msix_interrupt_addr    ( msix_interrupt_addr           ),
+        .msix_interrupt_data    ( msix_interrupt_data           )
     );
     
     pcileech_bar_impl_loopaddr i_bar1(
