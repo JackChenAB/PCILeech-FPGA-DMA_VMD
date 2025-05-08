@@ -24,11 +24,15 @@ module pcileech_tlps128_cfgspace_shadow(
     // ----------------------------------------------------------------------------
     // PCIe RECEIVE:
     // ----------------------------------------------------------------------------
-    wire                pcie_rx_rden    = tlps_in.tvalid && tlps_in.tuser[0] && (tlps_in.tdata[31:25] == 7'b0000010);   // CfgRd: Fmt[2:0]=000b (3 DW header, no data), CfgRd0/CfgRd1=0010xb
-    wire                pcie_rx_wren    = tlps_in.tvalid && tlps_in.tuser[0] && (tlps_in.tdata[31:25] == 7'b0100010);   // CfgWr: Fmt[2:0]=010b (3 DW header, data),    CfgWr0/CfgWr1=0010xb
+    // Configuration Request Validation
+    wire                pcie_rx_valid   = tlps_in.tvalid && tlps_in.tuser[0];
+    wire                pcie_rx_rden    = pcie_rx_valid && (tlps_in.tdata[31:25] == 7'b0000010);   // CfgRd: Fmt[2:0]=000b (3 DW header, no data), CfgRd0/CfgRd1=0010xb
+    wire                pcie_rx_wren    = pcie_rx_valid && (tlps_in.tdata[31:25] == 7'b0100010);   // CfgWr: Fmt[2:0]=010b (3 DW header, data),    CfgWr0/CfgWr1=0010xb
     wire [9:0]          pcie_rx_addr    = tlps_in.tdata[75:66];
+    wire                pcie_rx_addr_valid = (pcie_rx_addr < 10'h400);  // 4KB boundary check
     wire [31:0]         pcie_rx_data    = tlps_in.tdata[127:96];
     wire [7:0]          pcie_rx_tag     = tlps_in.tdata[47:40];
+    wire [2:0]          pcie_rx_status  = {~pcie_rx_valid, ~pcie_rx_addr_valid, 1'b0};  // Status for completion
     wire [3:0]          pcie_rx_be      = {tlps_in.tdata[32], tlps_in.tdata[33], tlps_in.tdata[34], tlps_in.tdata[35]};
     wire [15:0]         pcie_rx_reqid   = tlps_in.tdata[63:48];
         
@@ -62,8 +66,10 @@ module pcileech_tlps128_cfgspace_shadow(
     // (1) PCIe (if enabled), (2) USB, (3) INTERNAL.
     // Collisions will be discarded (it's assumed that they'll be very rare)
     // ----------------------------------------------------------------------------
-    wire            bram_wr_1_tlp = pcie_rx_wren & dshadow2fifo.cfgtlp_en;
-    wire            bram_wr_2_usb = ~bram_wr_1_tlp & usb_rx_wren;
+    // Write Control Logic with FIFO Status Check
+    wire            fifo_ready = ~i_fifo_49_49_clk2.full;
+    wire            bram_wr_1_tlp = pcie_rx_wren & dshadow2fifo.cfgtlp_en & pcie_rx_addr_valid & fifo_ready;
+    wire            bram_wr_2_usb = ~bram_wr_1_tlp & usb_rx_wren & fifo_ready;
     wire [3:0]      bram_wr_be = bram_wr_1_tlp ? (dshadow2fifo.cfgtlp_wren ? pcie_rx_be : 4'b0000) : (bram_wr_2_usb ? usb_rx_be : 4'b0000);
     wire [31:0]     bram_wr_data = bram_wr_1_tlp ? pcie_rx_data : (bram_wr_2_usb ? usb_rx_data : 32'h00000000);
     
@@ -111,31 +117,113 @@ module pcileech_tlps128_cfgspace_shadow(
         .rd_tlpwr       ( bram_rd_tlpwr            )  // ->
     );
     
-    // PCIe REPLY:
+    // PCIe REPLY with enhanced error handling:
+    reg [2:0] pcie_error_cnt;
+    reg pcie_cfg_timeout;
+    reg [7:0] pcie_cfg_tag_prev;
+    reg [15:0] pcie_cfg_reqid_prev;
+    reg [31:0] pcie_timeout_counter;
+    reg pcie_cfg_error;
+    
+    // Error detection for PCIe configuration transactions
+    always @(posedge clk_pcie) begin
+        if (rst) begin
+            pcie_error_cnt <= 3'b000;
+            pcie_cfg_timeout <= 1'b0;
+            pcie_cfg_tag_prev <= 8'h00;
+            pcie_cfg_reqid_prev <= 16'h0000;
+            pcie_timeout_counter <= 32'h0;
+            pcie_cfg_error <= 1'b0;
+        end else begin
+            // Check for configuration request timeout
+            if (bram_rd_valid) begin
+                if ((pcie_cfg_tag_prev == bram_rd_tag) &&
+                    (pcie_cfg_reqid_prev == bram_rd_reqid)) begin
+                    pcie_cfg_timeout <= 1'b1;
+                    pcie_error_cnt <= pcie_error_cnt + 1;
+                    pcie_cfg_error <= 1'b1;
+                end
+                pcie_timeout_counter <= 32'h0;
+                pcie_cfg_tag_prev <= bram_rd_tag;
+                pcie_cfg_reqid_prev <= bram_rd_reqid;
+            end else if (pcie_timeout_counter < 32'hFFFFFFFF) begin
+                pcie_timeout_counter <= pcie_timeout_counter + 1;
+                // 设置超时阈值为1000个时钟周期
+                if (pcie_timeout_counter >= 32'd1000) begin
+                    pcie_cfg_timeout <= 1'b1;
+                    pcie_cfg_error <= 1'b1;
+                end
+            end
+        end
+    end
+    
     pcileech_cfgspace_pcie_tx i_pcileech_cfgspace_pcie_tx(
         .rst            ( rst                       ),  // <-
         .clk_pcie       ( clk_pcie                  ),  // <-
         .pcie_id        ( pcie_id                   ),  // <- [15:0]
         .tlps_cfg_rsp   ( tlps_cfg_rsp              ),
         // cfgspace:
-        .cfg_wren       ( bram_rd_valid             ),  // <-
+        .cfg_wren       ( bram_rd_valid && !pcie_cfg_timeout ), // <-
         .cfg_tlpwr      ( bram_rd_tlpwr             ),  // <-
         .cfg_tag        ( bram_rd_tag               ),  // <- [7:0]
         .cfg_data       ( bram_rd_data_z            ),  // <- [32:0]
         .cfg_reqid      ( bram_rd_reqid             )   // <- [15:0]
     );
     
-    // USB REPLY:
+    // USB REPLY with enhanced FIFO monitoring:
+    wire usb_fifo_full, usb_fifo_empty;
+    reg [2:0] usb_fifo_error_cnt;
+    reg usb_fifo_overflow, usb_fifo_underflow;
+    reg [31:0] usb_fifo_usage_counter;
+    reg usb_fifo_error;
+    
+    always @(posedge clk_pcie) begin
+        if (rst) begin
+            usb_fifo_error_cnt <= 3'b000;
+            usb_fifo_overflow <= 1'b0;
+            usb_fifo_underflow <= 1'b0;
+            usb_fifo_usage_counter <= 32'h0;
+            usb_fifo_error <= 1'b0;
+        end else begin
+            // 监控FIFO使用情况
+            if (!usb_fifo_empty) begin
+                usb_fifo_usage_counter <= usb_fifo_usage_counter + 1;
+            end else begin
+                usb_fifo_usage_counter <= 32'h0;
+            end
+            
+            // Detect overflow condition
+            if (usb_fifo_full && (bram_rd_tp == `S_SHADOW_CFGSPACE_USB)) begin
+                usb_fifo_overflow <= 1'b1;
+                usb_fifo_error_cnt <= usb_fifo_error_cnt + 1;
+                usb_fifo_error <= 1'b1;
+            end
+            
+            // Detect underflow condition
+            if (usb_fifo_empty && dshadow2fifo.tx_valid) begin
+                usb_fifo_underflow <= 1'b1;
+                usb_fifo_error_cnt <= usb_fifo_error_cnt + 1;
+                usb_fifo_error <= 1'b1;
+            end
+            
+            // 检测FIFO长时间占用
+            if (usb_fifo_usage_counter >= 32'd1000) begin
+                usb_fifo_error <= 1'b1;
+                usb_fifo_error_cnt <= usb_fifo_error_cnt + 1;
+            end
+        end
+    end
+    
     fifo_43_43_clk2 i_fifo_43_43_clk2(
         .rst            ( rst                       ),
         .wr_clk         ( clk_pcie                  ),
         .rd_clk         ( clk_sys                   ),
-        .wr_en          ( (bram_rd_tp == `S_SHADOW_CFGSPACE_USB) ),
+        .wr_en          ( (bram_rd_tp == `S_SHADOW_CFGSPACE_USB) && !usb_fifo_full ),
         .din            ( {bram_rd_tag[0], bram_rd_addr, bram_rd_data_z} ),
-        .full           (                           ),
-        .rd_en          ( 1'b1                      ),
+        .full           ( usb_fifo_full             ),
+        .rd_en          ( !usb_fifo_empty           ),
         .dout           ( {dshadow2fifo.tx_addr_lo, dshadow2fifo.tx_addr, dshadow2fifo.tx_data} ),    
-        .empty          (                           ),
+        .empty          ( usb_fifo_empty            ),
         .valid          ( dshadow2fifo.tx_valid     )
     );
     
@@ -157,8 +245,9 @@ module pcileech_cfgspace_pcie_tx(
     input [15:0]            cfg_reqid
     );
     
-    wire [31:0]     cpl_tlp_data_dw0_rd  = 32'b01001010000000000000000000000001;
-    wire [31:0]     cpl_tlp_data_dw0_wr  = 32'b00001010000000000000000000000000;
+    // TLP Completion Package with Error Status
+    wire [31:0]     cpl_tlp_data_dw0_rd  = {29'b01001010000000000000000000000, pcie_rx_status};
+    wire [31:0]     cpl_tlp_data_dw0_wr  = {29'b00001010000000000000000000000, pcie_rx_status};
     wire [31:0]     cpl_tlp_data_dw1     = { `_bs16(pcie_id), 16'h0004 };
     wire [31:0]     cpl_tlp_data_dw2     = { cfg_reqid, cfg_tag, 8'h00 };
     wire [31:0]     cpl_tlp_data_dw3     = cfg_data;
@@ -166,21 +255,41 @@ module pcileech_cfgspace_pcie_tx(
     wire [127:0]    cpl_tlp_wr           = { 32'h00000000,     cpl_tlp_data_dw2, cpl_tlp_data_dw1, cpl_tlp_data_dw0_wr };
     wire [128:0]    cpl_tlps             = cfg_tlpwr ? {1'b0, cpl_tlp_wr} : {1'b1, cpl_tlp_rd};
 
+    // Cross-clock domain synchronization for control signals
+    reg [2:0] sync_rst_pcie;
+    always @(posedge clk_pcie) begin
+        sync_rst_pcie <= {sync_rst_pcie[1:0], rst};
+    end
+
     wire tx_tp;
     wire tx_empty;
+    wire tx_full;
+    wire tx_valid;
+    
+    // FIFO for TLP completion packages with status monitoring
     fifo_129_129_clk1 i_fifo_129_129_clk1 (
-        .srst           ( rst                       ),
+        .srst           ( sync_rst_pcie[2]          ),
         .clk            ( clk_pcie                  ),
         // data in
-        .wr_en          ( cfg_wren                  ),
+        .wr_en          ( cfg_wren & ~tx_full      ),
         .din            ( cpl_tlps                  ),
-        .full           (                           ),
+        .full           ( tx_full                   ),
         // data out
-        .rd_en          ( tlps_cfg_rsp.tready       ),
+        .rd_en          ( tlps_cfg_rsp.tready & ~tx_empty ),
         .dout           ( {tx_tp, tlps_cfg_rsp.tdata} ), 
         .empty          ( tx_empty                  ),
-        .valid          ( tlps_cfg_rsp.tvalid       )
+        .valid          ( tx_valid                  )
     );
+    
+    // State machine error handling
+    reg error_state;
+    always @(posedge clk_pcie) begin
+        if (sync_rst_pcie[2]) begin
+            error_state <= 1'b0;
+        end else begin
+            error_state <= (tx_full & cfg_wren) | (tx_empty & tlps_cfg_rsp.tready) | error_state;
+        end
+    end
     
     assign tlps_cfg_rsp.tkeepdw = (tx_tp ? 4'b1111 : 4'b0111);
     assign tlps_cfg_rsp.tlast = 1;

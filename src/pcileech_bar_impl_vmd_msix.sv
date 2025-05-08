@@ -68,11 +68,13 @@ module pcileech_bar_impl_vmd_msix(
         // 链接到MSI-X能力 (Next Pointer = 0x01)
         pcie_cap_regs[0] = 32'h10010142;  // Capability ID, Next Pointer, Version, Type (Root Complex Integrated Endpoint)
         pcie_cap_regs[1] = 32'h02810001;  // Device Capabilities (Max Payload Size 256 bytes, Extended Tag Field)
-        pcie_cap_regs[2] = 32'h00100000;  // Device Control and Status (Enable Relaxed Ordering)
+        pcie_cap_regs[2] = 32'h00100007;  // Device Control and Status (Enable Relaxed Ordering, Max Read Request Size 512 bytes)
         pcie_cap_regs[3] = 32'h0211A000;  // Link Capabilities (Port Number 1, ASPM L0s/L1, Data Link Layer Active Reporting)
         pcie_cap_regs[4] = 32'h00130001;  // Link Control and Status (ASPM L0s/L1 Enabled)
-        pcie_cap_regs[5] = 32'h00000000;  // Device Capabilities 2
+        pcie_cap_regs[5] = 32'h00000002;  // Device Capabilities 2 (支持TLP处理提示)
         pcie_cap_regs[6] = 32'h00000000;  // Device Control and Status 2
+        pcie_cap_regs[7] = 32'h00000000;  // Link Capabilities 2
+        pcie_cap_regs[8] = 32'h00000000;  // Link Control and Status 2
         
         // Power Management Capability (ID: 0x01) - 位于偏移0x100
         // 链接到MSI-X能力 (Next Pointer = 0x11)
@@ -99,6 +101,12 @@ module pcileech_bar_impl_vmd_msix(
             msix_table[i] = 32'h00000000;
         end
         msix_pba = 32'h00000000;
+        
+        // 初始化MSI-X表和PBA
+        for (int i = 0; i < 64; i++) begin
+            msix_table[i] = 32'h00000000;
+        end
+        msix_pba = 32'h00000000;
     end
     
     // 处理写请求
@@ -110,60 +118,111 @@ module pcileech_bar_impl_vmd_msix(
         end else if (wr_valid) begin
             // MSI-X控制寄存器写入 (位于偏移0x110)
             if ((wr_addr & 32'hFFFFFF00) == 32'h00000110) begin
-                if (wr_be[0]) msix_control[7:0] <= wr_data[7:0];
+                if (wr_be[0]) msix_control[7:0] <= wr_data[7:0] & 8'hFF;
                 if (wr_be[1]) begin
-                    msix_control[15:8] <= wr_data[15:8];
+                    msix_control[15:8] <= wr_data[15:8] & 8'hC0;  // 只允许修改Function Mask和MSI-X Enable位
                     msix_enabled <= wr_data[15];
                     msix_masked <= wr_data[14];
                 end
-                if (wr_be[2]) msix_control[23:16] <= wr_data[23:16];
-                if (wr_be[3]) msix_control[31:24] <= wr_data[31:24];
+                if (wr_be[2]) msix_control[23:16] <= wr_data[23:16] & 8'h00;  // 保留位
+                if (wr_be[3]) msix_control[31:24] <= wr_data[31:24] & 8'h00;  // 保留位
             end
             // MSI-X表写入
             else if ((wr_addr & 32'hFFFFF000) == MSIX_TABLE_OFFSET) begin
                 int index = (wr_addr[11:2]);
-                if (index < 64) begin
-                    if (wr_be[0]) msix_table[index][7:0] <= wr_data[7:0];
-                    if (wr_be[1]) msix_table[index][15:8] <= wr_data[15:8];
-                    if (wr_be[2]) msix_table[index][23:16] <= wr_data[23:16];
-                    if (wr_be[3]) msix_table[index][31:24] <= wr_data[31:24];
+                if (index < 64) begin  // 16个表项 * 4 DWORD = 64
+                    case (index[1:0])
+                        2'b00: begin  // 地址低32位
+                            if (wr_be[0]) msix_table[index][7:0] <= wr_data[7:0];
+                            if (wr_be[1]) msix_table[index][15:8] <= wr_data[15:8];
+                            if (wr_be[2]) msix_table[index][23:16] <= wr_data[23:16];
+                            if (wr_be[3]) msix_table[index][31:24] <= wr_data[31:24];
+                        end
+                        2'b01: begin  // 地址高32位
+                            if (wr_be[0]) msix_table[index][7:0] <= wr_data[7:0];
+                            if (wr_be[1]) msix_table[index][15:8] <= wr_data[15:8];
+                            if (wr_be[2]) msix_table[index][23:16] <= wr_data[23:16];
+                            if (wr_be[3]) msix_table[index][31:24] <= wr_data[31:24];
+                        end
+                        2'b10: begin  // 数据
+                            if (wr_be[0]) msix_table[index][7:0] <= wr_data[7:0];
+                            if (wr_be[1]) msix_table[index][15:8] <= wr_data[15:8];
+                            if (wr_be[2]) msix_table[index][23:16] <= wr_data[23:16];
+                            if (wr_be[3]) msix_table[index][31:24] <= wr_data[31:24];
+                        end
+                        2'b11: begin  // 控制
+                            if (wr_be[0]) msix_table[index][7:0] <= wr_data[7:0] & 8'h01;  // 只允许修改Vector Mask位
+                            if (wr_be[1]) msix_table[index][15:8] <= wr_data[15:8] & 8'h00;  // 保留位
+                            if (wr_be[2]) msix_table[index][23:16] <= wr_data[23:16] & 8'h00; // 保留位
+                            if (wr_be[3]) msix_table[index][31:24] <= wr_data[31:24] & 8'h00; // 保留位
+                        end
+                    endcase
                 end
             end
             // MSI-X PBA写入
             else if ((wr_addr & 32'hFFFFF000) == MSIX_PBA_OFFSET) begin
-                if (wr_be[0]) msix_pba[7:0] <= wr_data[7:0];
-                if (wr_be[1]) msix_pba[15:8] <= wr_data[15:8];
-                if (wr_be[2]) msix_pba[23:16] <= wr_data[23:16];
-                if (wr_be[3]) msix_pba[31:24] <= wr_data[31:24];
+                // PBA是只读的，写入操作被忽略
             end
             // PCIe能力结构写入
             else if ((wr_addr & 32'hFFFFFF00) == 32'h00000000) begin
                 int index = wr_addr[7:2];
                 if (index < 17) begin
-                    if (wr_be[0]) pcie_cap_regs[index][7:0] <= wr_data[7:0];
-                    if (wr_be[1]) pcie_cap_regs[index][15:8] <= wr_data[15:8];
-                    if (wr_be[2]) pcie_cap_regs[index][23:16] <= wr_data[23:16];
-                    if (wr_be[3]) pcie_cap_regs[index][31:24] <= wr_data[31:24];
+                    case (index)
+                        0: begin  // Capability Header - 只读
+                        end
+                        2: begin  // Device Control
+                            if (wr_be[0]) pcie_cap_regs[index][7:0] <= wr_data[7:0] & 8'hFF;
+                            if (wr_be[1]) pcie_cap_regs[index][15:8] <= wr_data[15:8] & 8'hFF;
+                            if (wr_be[2]) pcie_cap_regs[index][23:16] <= wr_data[23:16] & 8'h0F; // Status位
+                            if (wr_be[3]) pcie_cap_regs[index][31:24] <= wr_data[31:24] & 8'h00; // 保留位
+                        end
+                        4: begin  // Link Control
+                            if (wr_be[0]) pcie_cap_regs[index][7:0] <= wr_data[7:0] & 8'hFC;
+                            if (wr_be[1]) pcie_cap_regs[index][15:8] <= wr_data[15:8] & 8'h00; // Status位
+                            if (wr_be[2]) pcie_cap_regs[index][23:16] <= wr_data[23:16] & 8'h00;
+                            if (wr_be[3]) pcie_cap_regs[index][31:24] <= wr_data[31:24] & 8'h00;
+                        end
+                        6: begin  // Device Control 2
+                            if (wr_be[0]) pcie_cap_regs[index][7:0] <= wr_data[7:0] & 8'h0F;
+                            if (wr_be[1]) pcie_cap_regs[index][15:8] <= wr_data[15:8] & 8'h00; // Status位
+                            if (wr_be[2]) pcie_cap_regs[index][23:16] <= wr_data[23:16] & 8'h00;
+                            if (wr_be[3]) pcie_cap_regs[index][31:24] <= wr_data[31:24] & 8'h00;
+                        end
+                        default: begin  // 其他寄存器只读
+                        end
+                    endcase
                 end
             end
             // 电源管理能力写入
             else if ((wr_addr & 32'hFFFFFF00) == 32'h00000200) begin
                 int index = wr_addr[7:2];
                 if (index < 3) begin
-                    if (wr_be[0]) pm_cap_regs[index][7:0] <= wr_data[7:0];
-                    if (wr_be[1]) pm_cap_regs[index][15:8] <= wr_data[15:8];
-                    if (wr_be[2]) pm_cap_regs[index][23:16] <= wr_data[23:16];
-                    if (wr_be[3]) pm_cap_regs[index][31:24] <= wr_data[31:24];
+                    case (index)
+                        1: begin  // Power Management Control/Status
+                            if (wr_be[0]) pm_cap_regs[index][7:0] <= wr_data[7:0] & 8'h03;  // PowerState
+                            if (wr_be[1]) pm_cap_regs[index][15:8] <= wr_data[15:8] & 8'h00;  // 保留位
+                            if (wr_be[2]) pm_cap_regs[index][23:16] <= wr_data[23:16] & 8'h00; // 保留位
+                            if (wr_be[3]) pm_cap_regs[index][31:24] <= wr_data[31:24] & 8'h00; // 保留位
+                        end
+                        default: begin  // 其他寄存器只读
+                        end
+                    endcase
                 end
             end
             // 厂商特定能力写入
             else if ((wr_addr & 32'hFFFFFF00) == 32'h00000300) begin
                 int index = wr_addr[7:2];
                 if (index < 5) begin
-                    if (wr_be[0]) vendor_cap_regs[index][7:0] <= wr_data[7:0];
-                    if (wr_be[1]) vendor_cap_regs[index][15:8] <= wr_data[15:8];
-                    if (wr_be[2]) vendor_cap_regs[index][23:16] <= wr_data[23:16];
-                    if (wr_be[3]) vendor_cap_regs[index][31:24] <= wr_data[31:24];
+                    case (index)
+                        3: begin  // VMD特定配置
+                            if (wr_be[0]) vendor_cap_regs[index][7:0] <= wr_data[7:0];
+                            if (wr_be[1]) vendor_cap_regs[index][15:8] <= wr_data[15:8];
+                            if (wr_be[2]) vendor_cap_regs[index][23:16] <= wr_data[23:16];
+                            if (wr_be[3]) vendor_cap_regs[index][31:24] <= wr_data[31:24];
+                        end
+                        default: begin  // 其他寄存器只读
+                        end
+                    endcase
                 end
             end
         end
@@ -238,6 +297,12 @@ module pcileech_bar_impl_vmd_msix(
         msix_interrupt_data = 0;
     end
     
+    // MSI-X中断状态监控
+    reg [15:0] msix_active_vectors;  // 当前活动的中断向量
+    reg [15:0] msix_error_vectors;   // 发生错误的中断向量
+    reg [3:0]  msix_error_cnt;       // 中断错误计数器
+    reg        msix_error_overflow;   // 中断溢出错误标志
+    
     // 触发MSI-X中断的任务 (可以在其他模块中调用)
     task trigger_msix_interrupt;
         input [3:0] vector_num;
@@ -245,31 +310,49 @@ module pcileech_bar_impl_vmd_msix(
         reg [31:0] data;
         begin
             if (msix_enabled && !msix_masked) begin
-                // 设置pending bit
-                msix_pba[vector_num] = 1'b1;
-                
-                // 如果向量未被屏蔽，发送中断
-                if (!(msix_table[vector_num*4+3] & 32'h00000001)) begin
-                    // 从MSI-X表中获取中断地址和数据
-                    
-                    // 地址由两个DWORD组成 (低32位和高32位)
-                    addr[31:0] = msix_table[vector_num*4];
-                    addr[63:32] = msix_table[vector_num*4+1];
-                    
-                    // 数据为单个DWORD
-                    data = msix_table[vector_num*4+2];
-                    
-                    // 发送中断消息到PCIe接口
-                    msix_interrupt_valid = 1'b1;
-                    msix_interrupt_addr = addr;
-                    msix_interrupt_data = data;
-                    
-                    // 清除pending bit
-                    msix_pba[vector_num] = 1'b0;
+                // 检查中断向量是否有效
+                if (vector_num < 16) begin
+                    // 检查中断向量是否已经激活
+                    if (msix_active_vectors[vector_num]) begin
+                        msix_error_vectors[vector_num] <= 1'b1;
+                        msix_error_cnt <= (msix_error_cnt == 4'hf) ? msix_error_cnt : (msix_error_cnt + 1);
+                        msix_error_overflow <= 1'b1;
+                    end else begin
+                        // 设置pending bit和活动向量
+                        msix_pba[vector_num] = 1'b1;
+                        msix_active_vectors[vector_num] <= 1'b1;
+                        
+                        // 如果向量未被屏蔽，发送中断
+                        if (!(msix_table[vector_num*4+3] & 32'h00000001)) begin
+                            // 从MSI-X表中获取中断地址和数据
+                            addr[31:0] = msix_table[vector_num*4];
+                            addr[63:32] = msix_table[vector_num*4+1];
+                            data = msix_table[vector_num*4+2];
+                            
+                            // 发送中断消息到PCIe接口
+                            msix_interrupt_valid = 1'b1;
+                            msix_interrupt_addr = addr;
+                            msix_interrupt_data = data;
+                            
+                            // 清除pending bit和活动向量
+                            msix_pba[vector_num] = 1'b0;
+                            msix_active_vectors[vector_num] <= 1'b0;
+                        end
+                    end
                 end
             end
         end
     endtask
+    
+    // 重置中断错误状态
+    always @(posedge clk) begin
+        if (rst) begin
+            msix_error_vectors <= 16'h0000;
+            msix_error_cnt <= 4'h0;
+            msix_error_overflow <= 1'b0;
+            msix_active_vectors <= 16'h0000;
+        end
+    end
     
     // 测试中断触发 - 当写入特定地址时触发中断
     // 写入地址0x3000 + vector_num*4 将触发对应向量的中断
