@@ -24,12 +24,27 @@ module pcileech_tlps128_cfgspace_shadow(
     // ----------------------------------------------------------------------------
     // PCIe RECEIVE:
     // ----------------------------------------------------------------------------
-    // Configuration Request Validation
+    // Configuration Request Validation with Enhanced Boundary Checking
     wire                pcie_rx_valid   = tlps_in.tvalid && tlps_in.tuser[0];
     wire                pcie_rx_rden    = pcie_rx_valid && (tlps_in.tdata[31:25] == 7'b0000010);   // CfgRd: Fmt[2:0]=000b (3 DW header, no data), CfgRd0/CfgRd1=0010xb
     wire                pcie_rx_wren    = pcie_rx_valid && (tlps_in.tdata[31:25] == 7'b0100010);   // CfgWr: Fmt[2:0]=010b (3 DW header, data),    CfgWr0/CfgWr1=0010xb
     wire [9:0]          pcie_rx_addr    = tlps_in.tdata[75:66];
-    wire                pcie_rx_addr_valid = (pcie_rx_addr < 10'h400);  // 4KB boundary check
+    
+    // 增强的地址有效性检查
+    wire                pcie_rx_addr_in_range = (pcie_rx_addr < 10'h400);  // 4KB boundary check
+    wire                pcie_rx_addr_aligned = (pcie_rx_addr[1:0] == 2'b00); // 确保地址4字节对齐
+    wire                pcie_rx_addr_valid = pcie_rx_addr_in_range && pcie_rx_addr_aligned;
+    
+    // 地址错误计数器
+    reg [7:0]           pcie_addr_error_cnt = 8'h00;
+    
+    always @(posedge clk_pcie) begin
+        if (rst) begin
+            pcie_addr_error_cnt <= 8'h00;
+        end else if (pcie_rx_valid && (pcie_rx_rden || pcie_rx_wren) && !pcie_rx_addr_valid) begin
+            pcie_addr_error_cnt <= pcie_addr_error_cnt + 1'b1;
+        end
+    end
     wire [31:0]         pcie_rx_data    = tlps_in.tdata[127:96];
     wire [7:0]          pcie_rx_tag     = tlps_in.tdata[47:40];
     wire [2:0]          pcie_rx_status  = {~pcie_rx_valid, ~pcie_rx_addr_valid, 1'b0};  // Status for completion
@@ -66,10 +81,32 @@ module pcileech_tlps128_cfgspace_shadow(
     // (1) PCIe (if enabled), (2) USB, (3) INTERNAL.
     // Collisions will be discarded (it's assumed that they'll be very rare)
     // ----------------------------------------------------------------------------
-    // Write Control Logic with FIFO Status Check
+    // Write Control Logic with FIFO Status Check and Overflow Protection
     wire            fifo_ready = ~i_fifo_49_49_clk2.full;
-    wire            bram_wr_1_tlp = pcie_rx_wren & dshadow2fifo.cfgtlp_en & pcie_rx_addr_valid & fifo_ready;
-    wire            bram_wr_2_usb = ~bram_wr_1_tlp & usb_rx_wren & fifo_ready;
+    reg             fifo_overflow_detected = 1'b0;
+    reg [7:0]       fifo_overflow_counter = 8'h00;
+    
+    // 添加FIFO溢出检测和恢复逻辑
+    always @(posedge clk_pcie) begin
+        if (rst) begin
+            fifo_overflow_detected <= 1'b0;
+            fifo_overflow_counter <= 8'h00;
+        end else begin
+            if (i_fifo_49_49_clk2.full && (pcie_rx_wren || usb_rx_wren)) begin
+                fifo_overflow_detected <= 1'b1;
+                fifo_overflow_counter <= fifo_overflow_counter + 1'b1;
+            end else if (fifo_overflow_detected && !i_fifo_49_49_clk2.full) begin
+                fifo_overflow_counter <= fifo_overflow_counter;
+                if (fifo_overflow_counter > 8'h10) begin
+                    fifo_overflow_detected <= 1'b0;
+                    fifo_overflow_counter <= 8'h00;
+                end
+            end
+        end
+    end
+    
+    wire            bram_wr_1_tlp = pcie_rx_wren & dshadow2fifo.cfgtlp_en & pcie_rx_addr_valid & fifo_ready & ~fifo_overflow_detected;
+    wire            bram_wr_2_usb = ~bram_wr_1_tlp & usb_rx_wren & fifo_ready & ~fifo_overflow_detected;
     wire [3:0]      bram_wr_be = bram_wr_1_tlp ? (dshadow2fifo.cfgtlp_wren ? pcie_rx_be : 4'b0000) : (bram_wr_2_usb ? usb_rx_be : 4'b0000);
     wire [31:0]     bram_wr_data = bram_wr_1_tlp ? pcie_rx_data : (bram_wr_2_usb ? usb_rx_data : 32'h00000000);
     
@@ -77,10 +114,12 @@ module pcileech_tlps128_cfgspace_shadow(
     // WRITE multiplexor and state machine: simple naive multiplexor which will prioritize in order:
     // (1) PCIe (if enabled), (2) USB, (3) INTERNAL.
     // Collisions will be discarded (it's assumed that they'll be very rare)
+    // 增强状态机定义，添加错误恢复状态
     // ----------------------------------------------------------------------------
     `define S_SHADOW_CFGSPACE_IDLE  2'b00
     `define S_SHADOW_CFGSPACE_TLP   2'b01
     `define S_SHADOW_CFGSPACE_USB   2'b10
+    `define S_SHADOW_CFGSPACE_ERROR 2'b11  // 新增错误恢复状态
     
     wire [15:0]     bram_rd_reqid;
     wire [1:0]      bram_rd_tp;
@@ -99,6 +138,19 @@ module pcileech_tlps128_cfgspace_shadow(
     wire [7:0]      bram_rdreq_tag  = bram_tlp ? pcie_rx_tag : {7'h00, usb_rx_addr_lo};
     wire [15:0]     bram_rdreq_reqid= bram_tlp ? pcie_rx_reqid : 16'h0000;
     
+    // READ state machine with enhanced error handling:
+    reg [1:0]       bram_rd_tp = `S_SHADOW_CFGSPACE_IDLE;
+    reg [9:0]       bram_rd_addr;
+    reg [31:0]      bram_rd_data_z;
+    reg [7:0]       bram_rd_tag;
+    reg [7:0]       error_recovery_counter = 8'h00;
+    reg             state_timeout_detected = 1'b0;
+    reg [15:0]      bram_rd_reqid;
+    reg             bram_rd_tlpwr;
+    
+    // 状态机超时检测计数器
+    reg [15:0]      state_timeout_counter = 16'h0000;
+    
     // BRAM MEMORY ACCESS for the 4kB / 0x1000 byte shadow configuration space.    
     pcileech_mem_wrap i_pcileech_mem_wrap(
         .clk_pcie       ( clk_pcie                 ), // <-
@@ -116,6 +168,49 @@ module pcileech_tlps128_cfgspace_shadow(
         .rd_reqid       ( bram_rd_reqid            ), // ->
         .rd_tlpwr       ( bram_rd_tlpwr            )  // ->
     );
+    
+    always @ ( posedge clk_pcie )
+    begin
+        if ( rst ) begin
+            bram_rd_tp <= `S_SHADOW_CFGSPACE_IDLE;
+            state_timeout_counter <= 16'h0000;
+            state_timeout_detected <= 1'b0;
+            error_recovery_counter <= 8'h00;
+        end else begin
+            // 状态机超时检测逻辑
+            if (bram_rd_tp != `S_SHADOW_CFGSPACE_IDLE) begin
+                state_timeout_counter <= state_timeout_counter + 1'b1;
+                if (state_timeout_counter >= 16'hFFFF) begin
+                    state_timeout_detected <= 1'b1;
+                end
+            end else begin
+                state_timeout_counter <= 16'h0000;
+                state_timeout_detected <= 1'b0;
+            end
+            
+            case ( bram_rd_tp )
+                `S_SHADOW_CFGSPACE_IDLE: begin
+                    error_recovery_counter <= 8'h00;
+                end
+                `S_SHADOW_CFGSPACE_TLP, `S_SHADOW_CFGSPACE_USB: begin
+                    if (state_timeout_detected) begin
+                        bram_rd_tp <= `S_SHADOW_CFGSPACE_ERROR;
+                    end
+                end
+                `S_SHADOW_CFGSPACE_ERROR: begin
+                    // 错误恢复逻辑
+                    error_recovery_counter <= error_recovery_counter + 1'b1;
+                    if (error_recovery_counter >= 8'h10) begin
+                        bram_rd_tp <= `S_SHADOW_CFGSPACE_IDLE;
+                        error_recovery_counter <= 8'h00;
+                    end
+                end
+                default: begin
+                    // Do nothing
+                end
+            endcase
+        end
+    end
     
     // PCIe REPLY with enhanced error handling:
     reg [2:0] pcie_error_cnt;
@@ -214,11 +309,37 @@ module pcileech_tlps128_cfgspace_shadow(
         end
     end
     
+    // 改进的跨时钟域FIFO，添加同步复位和数据有效性检查
+    reg rst_pcie_sync, rst_sys_sync;
+    reg [1:0] rst_pcie_meta, rst_sys_meta;
+    
+    // 同步复位信号到各自时钟域
+    always @(posedge clk_pcie) begin
+        rst_pcie_meta <= {rst_pcie_meta[0], rst};
+        rst_pcie_sync <= rst_pcie_meta[1];
+    end
+    
+    always @(posedge clk_sys) begin
+        rst_sys_meta <= {rst_sys_meta[0], rst};
+        rst_sys_sync <= rst_sys_meta[1];
+    end
+    
+    // 添加数据有效性检查
+    wire wr_data_valid = (bram_rd_tp == `S_SHADOW_CFGSPACE_USB) && !usb_fifo_full;
+    reg wr_data_valid_reg;
+    
+    always @(posedge clk_pcie) begin
+        if (rst_pcie_sync)
+            wr_data_valid_reg <= 1'b0;
+        else
+            wr_data_valid_reg <= wr_data_valid;
+    end
+    
     fifo_43_43_clk2 i_fifo_43_43_clk2(
         .rst            ( rst                       ),
         .wr_clk         ( clk_pcie                  ),
         .rd_clk         ( clk_sys                   ),
-        .wr_en          ( (bram_rd_tp == `S_SHADOW_CFGSPACE_USB) && !usb_fifo_full ),
+        .wr_en          ( wr_data_valid_reg && wr_data_valid ),  // 确保数据稳定
         .din            ( {bram_rd_tag[0], bram_rd_addr, bram_rd_data_z} ),
         .full           ( usb_fifo_full             ),
         .rd_en          ( !usb_fifo_empty           ),
