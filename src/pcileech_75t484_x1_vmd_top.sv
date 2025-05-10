@@ -1,7 +1,7 @@
 //
 // PCILeech FPGA.
 //
-// Top module for various 75T-484 x1 Artix-7 boards with Intel VMD support.
+// Top module for various 75T-484 x1 Artix-7 boards with Intel RST VMD controller support.
 //
 // (c) Ulf Frisk, 2019-2024
 // Author: Ulf Frisk, pcileech@frizk.net
@@ -11,12 +11,12 @@
 `include "pcileech_header.svh"
 
 module pcileech_75t484_x1_vmd_top #(
-    // Intel VMD控制器设备ID (9A0B)
+    // Intel RST VMD控制器设备ID (9A0B)
     parameter       PARAM_DEVICE_ID = 16'h9A0B,
     parameter       PARAM_VERSION_NUMBER_MAJOR = 4,
     parameter       PARAM_VERSION_NUMBER_MINOR = 14,
-    // 自定义值可用于存储类代码信息 (010400 - 存储控制器)
-    parameter       PARAM_CUSTOM_VALUE = 32'h00010400
+    // 自定义值可用于存储PCI桥接器类代码信息 (060400 - PCI桥接器)
+    parameter       PARAM_CUSTOM_VALUE = 32'h00060400
 ) (
     // SYS
     input           clk,

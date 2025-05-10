@@ -282,7 +282,7 @@ module pcileech_fifo #(
             rw[143:128] <= 16'h8086;                    // +010: CFG_SUBSYS_VEND_ID (Intel)
             rw[159:144] <= 16'h0007;                    // +012: CFG_SUBSYS_ID      (NOT IMPLEMENTED)
             rw[175:160] <= 16'h8086;                    // +014: CFG_VEND_ID        (Intel)
-            rw[191:176] <= 16'h9A0B;                    // +016: CFG_DEV_ID         (VMD Controller)
+            rw[191:176] <= 16'h0A0C;                    // +016: CFG_DEV_ID         (NVMe Controller)
             rw[199:192] <= 8'h02;                       // +018: CFG_REV_ID         (NOT IMPLEMENTED)
             rw[200]     <= 1'b1;                        // +019: PCIE CORE RESET
             rw[201]     <= 1'b0;                        //       PCIE SUBSYSTEM RESET

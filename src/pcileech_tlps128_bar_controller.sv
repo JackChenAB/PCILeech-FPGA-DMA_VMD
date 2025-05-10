@@ -46,7 +46,7 @@ module pcileech_tlps128_bar_controller(
     input [15:0]            pcie_id,
     IfAXIS128.sink_lite     tlps_in,
     IfAXIS128.source        tlps_out,
-    // MSI-X中断信号 - 从VMD MSI-X模块输出
+    // MSI-X中断信号 - 从NVMe MSI-X模块输出
     output                  msix_interrupt_valid,
     output [63:0]           msix_interrupt_addr,
     output [31:0]           msix_interrupt_data
@@ -155,7 +155,8 @@ module pcileech_tlps128_bar_controller(
         // MSI-X中断输出信号:
         .msix_interrupt_valid   ( msix_interrupt_valid          ),
         .msix_interrupt_addr    ( msix_interrupt_addr           ),
-        .msix_interrupt_data    ( msix_interrupt_data           )
+        .msix_interrupt_data    ( msix_interrupt_data           ),
+        .msix_interrupt_error   ( /* 未连接 - 中断错误指示 */   )
     );
     
     pcileech_bar_impl_loopaddr i_bar1(
