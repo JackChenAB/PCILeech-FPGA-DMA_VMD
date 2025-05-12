@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-本项目是PCILeech FPGA实现，基于Xilinx Artix-7 XC7A75T-FGG484芯片，专门仿真Intel RST VMD（Volume Management Device）控制器。PCILeech是一个直接内存访问（DMA）工具，可用于硬件安全研究和测试。该项目通过模拟Intel RST VMD控制器（设备ID：9A0B）实现对现代系统的DMA访问，有效绕过AXX（Access Control Enforcement）安全机制。
+本项目是PCILeech FPGA实现，基于Xilinx Artix-7 XC7A75T-FGG484芯片，专门仿真Intel RST VMD（Volume Management Device）控制器。PCILeech是一个直接内存访问（DMA）工具，可用于硬件安全研究和测试。该项目通过模拟Intel RST VMD控制器（设备ID：9A0B）实现对现代系统的DMA访问.
 
 ## 技术原理
 
