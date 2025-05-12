@@ -51,13 +51,48 @@ module pcileech_pcie_tlp_a7(
         .tlps_cfg_rsp   ( tlps_cfg_rsp.source           )
     );
     
+    // 声明TLP回响输出接口
+    IfAXIS128 tlps_echo();
+    
     pcileech_tlps128_filter i_pcileech_tlps128_filter(
         .rst            ( rst                           ),
         .clk_pcie       ( clk_pcie                      ),
         .alltlp_filter  ( dshadow2fifo.alltlp_filter    ),
         .cfgtlp_filter  ( dshadow2fifo.cfgtlp_filter    ),
+        .tlp_echo_enable( dshadow2fifo.rw[80]           ),  // 使用rw[80]作为TLP回响使能位
         .tlps_in        ( tlps_rx                       ),
-        .tlps_out       ( tlps_filtered.source_lite     )
+        .tlps_out       ( tlps_filtered.source_lite     ),
+        .tlps_echo_out  ( tlps_echo.source_lite         )  // TLP回响输出
+    );
+    
+    // 将回响的TLP包连接到现有的多路复用器
+    IfAXIS128 tlps_tx_static();
+    // 确保tlps_tx_static的输出能正确连接到tlps_static
+    assign tlps_static.has_data = tlps_tx_static.has_data || tlps_echo_full.has_data;
+    assign tlps_static.tdata = tlps_tx_static.tdata;
+    assign tlps_static.tkeepdw = tlps_tx_static.tkeepdw;
+    assign tlps_static.tlast = tlps_tx_static.tlast;
+    assign tlps_static.tuser = tlps_tx_static.tuser;
+    assign tlps_static.tvalid = tlps_tx_static.tvalid;
+    assign tlps_tx_static.tready = tlps_static.tready;
+    
+    // 当回响功能启用时，将回响的TLP包优先发送到PCIe接口
+    // 创建一个完整的AXIS接口，用于连接回响输出到多路复用器
+    IfAXIS128 tlps_echo_full();
+    assign tlps_echo_full.tdata = tlps_echo.tdata;
+    assign tlps_echo_full.tkeepdw = tlps_echo.tkeepdw;
+    assign tlps_echo_full.tvalid = tlps_echo.tvalid;
+    assign tlps_echo_full.tuser = tlps_echo.tuser;
+    assign tlps_echo_full.tlast = tlps_echo.tlast;
+    assign tlps_echo_full.has_data = tlps_echo.tvalid;
+    
+    pcileech_tlps128_sink_mux1 i_pcileech_tlps128_sink_static_mux(
+        .rst            ( rst                           ),
+        .clk_pcie       ( clk_pcie                      ),
+        .tlps_out       ( tlps_tx_static.source         ),
+        .tlps_in1       ( tlps_echo_full.sink           ),  // TLP回响输入（最高优先级）
+        .tlps_in2       ( tlps_cfg_rsp.sink             ),
+        .tlps_in3       ( tlps_cfg_rsp.sink             )  // 占位，实际未使用
     );
     
     pcileech_tlps128_dst_fifo i_pcileech_tlps128_dst_fifo(
@@ -158,8 +193,10 @@ module pcileech_tlps128_filter(
     input                   clk_pcie,
     input                   alltlp_filter,
     input                   cfgtlp_filter,
+    input                   tlp_echo_enable,    // TLP echo enable signal
     IfAXIS128.sink_lite     tlps_in,
-    IfAXIS128.source_lite   tlps_out
+    IfAXIS128.source_lite   tlps_out,
+    IfAXIS128.source_lite   tlps_echo_out      // Echo output interface
 );
 
     bit [127:0]     tdata;
@@ -185,6 +222,14 @@ module pcileech_tlps128_filter(
                         (tlps_in.tdata[31:25] == 7'b0100010)         // CfgWr: Fmt[2:0]=010b (3 DW header, data),    CfgWr0/CfgWr1=0010xb
                       );
     wire filter_next = (filter && !first) || (cfgtlp_filter && first && is_tlphdr_cfg) || (alltlp_filter && first && !is_tlphdr_cpl && !is_tlphdr_cfg);
+    
+    // TLP Echo functionality
+    // Echo the incoming TLP packets when echo is enabled
+    assign tlps_echo_out.tdata   = tlps_in.tdata;
+    assign tlps_echo_out.tkeepdw = tlps_in.tkeepdw;
+    assign tlps_echo_out.tvalid  = tlps_in.tvalid && tlp_echo_enable && !rst;
+    assign tlps_echo_out.tuser   = tlps_in.tuser;
+    assign tlps_echo_out.tlast   = tlps_in.tlast;
                       
     always @ ( posedge clk_pcie ) begin
         tdata   <= tlps_in.tdata;
