@@ -283,6 +283,10 @@ interface IfShadow2Fifo;
     wire                alltlp_filter;
     wire                bar_en;
     
+    // 控制位定义：
+    // cfgtlp_en: TLP回响使能位
+    // cfgtlp_zero: 隐身模式使能位，用于zero4k伪装策略
+    
     modport fifo (
         output cfgtlp_wren, cfgtlp_zero, rx_rden, rx_wren, rx_be, rx_addr, rx_addr_lo, rx_data, cfgtlp_en, cfgtlp_filter, alltlp_filter, bar_en,
         input tx_valid, tx_addr, tx_addr_lo, tx_data

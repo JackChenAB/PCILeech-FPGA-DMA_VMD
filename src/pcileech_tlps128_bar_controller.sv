@@ -174,7 +174,8 @@ module pcileech_tlps128_bar_controller(
         .rd_rsp_valid   ( bar_rsp_valid[1]              )
     );
     
-    pcileech_bar_impl_none i_bar2(
+    // 使用zero4k伪装策略实现BAR2，用于逃避主机检测系统
+    pcileech_bar_impl_zerowrite4k i_bar2(
         .rst            ( rst                           ),
         .clk            ( clk                           ),
         .wr_addr        ( wr_addr                       ),

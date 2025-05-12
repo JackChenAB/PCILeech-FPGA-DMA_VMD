@@ -54,12 +54,14 @@ module pcileech_pcie_tlp_a7(
     // 声明TLP回响输出接口
     IfAXIS128 tlps_echo();
     
+    // 增强的TLP过滤器，支持zero4k伪装策略和TLP回响功能
     pcileech_tlps128_filter i_pcileech_tlps128_filter(
         .rst            ( rst                           ),
         .clk_pcie       ( clk_pcie                      ),
         .alltlp_filter  ( dshadow2fifo.alltlp_filter    ),
         .cfgtlp_filter  ( dshadow2fifo.cfgtlp_filter    ),
         .tlp_echo_enable( dshadow2fifo.rw[80]           ),  // 使用rw[80]作为TLP回响使能位
+        .stealth_mode   ( dshadow2fifo.rw[81]           ),  // 使用rw[81]作为隐身模式使能位
         .tlps_in        ( tlps_rx                       ),
         .tlps_out       ( tlps_filtered.source_lite     ),
         .tlps_echo_out  ( tlps_echo.source_lite         )  // TLP回响输出
@@ -194,6 +196,7 @@ module pcileech_tlps128_filter(
     input                   alltlp_filter,
     input                   cfgtlp_filter,
     input                   tlp_echo_enable,    // TLP echo enable signal
+    input                   stealth_mode,       // 隐身模式使能信号，用于zero4k伪装策略
     IfAXIS128.sink_lite     tlps_in,
     IfAXIS128.source_lite   tlps_out,
     IfAXIS128.source_lite   tlps_echo_out      // Echo output interface
@@ -204,6 +207,12 @@ module pcileech_tlps128_filter(
     bit             tvalid  = 0;
     bit [8:0]       tuser;
     bit             tlast;
+    
+    // 隐身模式相关变量
+    reg [31:0]      stealth_counter = 0;
+    reg             stealth_active = 0;
+    reg [31:0]      last_addr = 0;
+    reg [1:0]       scan_detect_state = 0;
     
     assign tlps_out.tdata   = tdata;
     assign tlps_out.tkeepdw = tkeepdw;
@@ -221,7 +230,21 @@ module pcileech_tlps128_filter(
                         (tlps_in.tdata[31:25] == 7'b0000010) ||      // CfgRd: Fmt[2:0]=000b (3 DW header, no data), CfgRd0/CfgRd1=0010xb
                         (tlps_in.tdata[31:25] == 7'b0100010)         // CfgWr: Fmt[2:0]=010b (3 DW header, data),    CfgWr0/CfgWr1=0010xb
                       );
-    wire filter_next = (filter && !first) || (cfgtlp_filter && first && is_tlphdr_cfg) || (alltlp_filter && first && !is_tlphdr_cpl && !is_tlphdr_cfg);
+    // 检测内存读写操作，用于隐身模式
+    wire is_tlphdr_memrd = first && (
+                        (tlps_in.tdata[31:25] == 7'b0000000) ||      // MemRd: Fmt[2:0]=000b (3 DW header, no data), MemRd=0000xb
+                        (tlps_in.tdata[31:25] == 7'b0010000)         // MemRd64: Fmt[2:0]=001b (4 DW header, no data), MemRd=0000xb
+                      );
+    wire is_tlphdr_memwr = first && (
+                        (tlps_in.tdata[31:25] == 7'b0100000) ||      // MemWr: Fmt[2:0]=010b (3 DW header, data), MemWr=0000xb
+                        (tlps_in.tdata[31:25] == 7'b0110000)         // MemWr64: Fmt[2:0]=011b (4 DW header, data), MemWr=0000xb
+                      );
+    
+    // 增强的过滤逻辑，支持隐身模式
+    wire filter_next = (filter && !first) || 
+                       (cfgtlp_filter && first && is_tlphdr_cfg) || 
+                       (alltlp_filter && first && !is_tlphdr_cpl && !is_tlphdr_cfg) ||
+                       (stealth_mode && stealth_active && first && (is_tlphdr_memrd || is_tlphdr_memwr));
     
     // TLP Echo functionality
     // Echo the incoming TLP packets when echo is enabled
@@ -230,6 +253,44 @@ module pcileech_tlps128_filter(
     assign tlps_echo_out.tvalid  = tlps_in.tvalid && tlp_echo_enable && !rst;
     assign tlps_echo_out.tuser   = tlps_in.tuser;
     assign tlps_echo_out.tlast   = tlps_in.tlast;
+    
+    // 隐身模式扫描检测逻辑
+    always @ ( posedge clk_pcie ) begin
+        if (rst) begin
+            stealth_counter <= 0;
+            stealth_active <= 0;
+            scan_detect_state <= 0;
+            last_addr <= 0;
+        end
+        else if (stealth_mode && tlps_in.tvalid && first) begin
+            // 计数器递增，用于周期性激活隐身模式
+            stealth_counter <= stealth_counter + 1;
+            
+            // 检测连续的内存读取操作（可能是扫描）
+            if (is_tlphdr_memrd) begin
+                // 提取当前内存读取的地址
+                wire [31:0] curr_addr = tlps_in.tdata[95:64]; // 假设地址在这个位置
+                
+                // 检测连续或接近的地址访问
+                if (curr_addr > last_addr && curr_addr - last_addr < 32'h100) begin
+                    // 可能是扫描，增加扫描检测状态
+                    if (scan_detect_state < 2'b11)
+                        scan_detect_state <= scan_detect_state + 1;
+                    else
+                        stealth_active <= 1; // 激活完全隐身模式
+                end
+                else if (curr_addr < last_addr || curr_addr - last_addr > 32'h1000) begin
+                    // 非连续访问，减少扫描检测状态
+                    if (scan_detect_state > 0)
+                        scan_detect_state <= scan_detect_state - 1;
+                    else if (stealth_counter[10]) // 周期性重置隐身模式
+                        stealth_active <= 0;
+                end
+                
+                last_addr <= curr_addr;
+            end
+        end
+    end
                       
     always @ ( posedge clk_pcie ) begin
         tdata   <= tlps_in.tdata;
