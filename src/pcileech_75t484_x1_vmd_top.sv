@@ -6,7 +6,6 @@
 //
 // (c) Ulf Frisk, 2019-2024
 // 作者: Ulf Frisk, pcileech@frizk.net
-// 修改者: <项目维护者>
 //
 
 `timescale 1ns / 1ps
