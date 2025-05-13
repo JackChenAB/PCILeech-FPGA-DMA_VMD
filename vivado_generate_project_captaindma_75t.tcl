@@ -117,6 +117,9 @@ set files [list \
  [file normalize "${origin_dir}/src/pcileech_tlps128_bar_controller.sv"]\
  [file normalize "${origin_dir}/src/pcileech_tlps128_cfgspace_shadow.sv"]\
  [file normalize "${origin_dir}/src/pcileech_75t484_x1_top.sv"]\
+ [file normalize "${origin_dir}/src/pcileech_rw1c_register.sv"]\
+ [file normalize "${origin_dir}/src/pcileech_pcie_tlps128_status.sv"]\
+ [file normalize "${origin_dir}/src/pcileech_tlps128_monitor.sv"]\
 ]
 set imported_files [import_files -fileset sources_1 $files]
 
@@ -168,6 +171,17 @@ set file "src/pcileech_75t484_x1_top.sv"
 set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
 set_property -name "file_type" -value "SystemVerilog" -objects $file_obj
 
+set file "src/pcileech_rw1c_register.sv"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "SystemVerilog" -objects $file_obj
+
+set file "src/pcileech_pcie_tlps128_status.sv"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "SystemVerilog" -objects $file_obj
+
+set file "src/pcileech_tlps128_monitor.sv"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "SystemVerilog" -objects $file_obj
 
 # Set 'sources_1' fileset properties
 set obj [get_filesets sources_1]
