@@ -23,11 +23,14 @@ This project is a PCILeech FPGA implementation based on the Xilinx Artix-7 XC7A7
 
 ## Latest Updates
 
-- **VMD Controller Enhancement** - Complete implementation of Intel RST VMD controller register sets, supporting endpoint management and VMD-specific features
+- **VMD Controller Enhancement** - Full implementation of Intel RST VMD controller register set, supporting endpoint management and VMD-specific features
 - **MSI-X Interrupt Improvement** - Implementation of automatic interrupt triggering and status monitoring, supporting VMD status change notifications and command completion notifications
-- **NVMe Command Processing** - Support for basic NVMe command sets, allowing systems to identify and operate virtual storage devices
-- **Code Architecture Optimization** - Refactoring of top-level modules and interface definitions, improving code maintainability and stability
-- **Module Interface Fixes** - Fixed interface inconsistency issues between pcileech_com and pcie_a7 modules
+- **NVMe Command Processing** - Support for basic NVMe command set, allowing the system to identify and operate virtual storage devices
+- **Multi-Function Device Simulation** - Added support for simulating multiple PCI functions with configurable device types and capabilities
+- **ACPI Path & Device Tree Simulation** - Implementation of realistic ACPI paths and device relationships for better system integration
+- **Configurable BAR Addressing** - Support for customizable BAR addresses across multiple functions
+- **Code Architecture Optimization** - Restructured top-level modules and interface definitions to improve code maintainability and stability
+- **Module Interface Fix** - Fixed inconsistencies between pcileech_com and pcie_a7 module interfaces to ensure stable data flow
 - **IP Core Optimization** - Fixed configuration space memory depth, supporting more complete VMD capability sets
 - **Security Enhancement** - Added access pattern recognition and dynamic response control mechanisms
 - **Stealth Mode** - Implemented TLP echo and scan detection functions to counter security monitoring
@@ -129,6 +132,18 @@ The latest version significantly enhances VMD controller functionality:
    ```
    source ip/verify_ip_consistency.tcl
    ```
+
+## Script Fix Notes
+
+The latest version fixes the following issues in the project generation and build scripts:
+
+1. **Implementation Run Configuration** - Added complete impl_1 run creation and configuration code to the vivado_generate_project_captaindma_75t.tcl script, ensuring correct execution of implementation steps
+2. **Project Generation and Build Consistency** - Ensures consistency between vivado_generate_project_captaindma_75t.tcl and vivado_build.tcl scripts in terms of implementation settings
+3. **Report Configuration Improvement** - Added complete implementation report configurations, including DRC, timing, power, and resource utilization reports
+4. **Parameter Passing Enhancement** - Optimized parameter passing methods between scripts, automatically recognizing project names
+5. **File Reference Fix** - Fixed inconsistent file path references, ensuring all files are correctly imported
+6. **Synthesis and Implementation Flow Upgrade** - Updated to Vivado 2022-compatible synthesis and implementation flows
+7. **IP Core Upgrade Handling** - Added correct IP core upgrade handling logic
 
 ## Usage
 

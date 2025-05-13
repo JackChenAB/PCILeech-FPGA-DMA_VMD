@@ -23,7 +23,12 @@ module pcileech_75t484_x1_vmd_top #(
     // PCI桥接器类代码: 06 04 00 (基类/子类/接口)
     parameter       PARAM_CLASS_CODE = 24'h060400,     // PCI-to-PCI桥接器类代码
     // 传递给子模块的自定义参数
-    parameter       PARAM_CUSTOM_VALUE = 32'h00060400  // 自定义值 (此处用于传递类代码)
+    parameter       PARAM_CUSTOM_VALUE = 32'h00060400,  // 自定义值 (此处用于传递类代码)
+    parameter       PARAM_VERSION = 32'h00010000,    // 版本1.0
+    parameter       PARAM_FUNCTION_COUNT = 8'h04,    // 支持的功能数量
+    parameter       PARAM_DEVICE_CLASS = 8'h08,      // 基础设备类型: 通用系统外设
+    parameter       PARAM_DEVICE_SUBCLASS = 8'h06,   // 子类型: VMD控制器
+    parameter       PARAM_DEVICE_INTERFACE = 8'h00   // 接口: 无特定接口
 ) (
     // 系统时钟
     input           clk,                // 系统时钟
@@ -56,7 +61,10 @@ module pcileech_75t484_x1_vmd_top #(
     output          ft601_wr_n,         // FT601写使能信号，低电平有效
     output          ft601_siwu_n,       // FT601立即更新状态信号，低电平有效
     output          ft601_rd_n,         // FT601读使能信号，低电平有效
-    output          ft601_oe_n          // FT601输出使能信号，低电平有效
+    output          ft601_oe_n,         // FT601输出使能信号，低电平有效
+    
+    // 调试接口
+    output [3:0]    led
 );
 
     // -------------------------------------------------------------------------
@@ -135,7 +143,8 @@ module pcileech_75t484_x1_vmd_top #(
         
         // 状态输出
         .led_state                  ( led_state                     ),
-        .led_identify               ( led_identify                  )
+        .led_identify               ( led_identify                  ),
+        .led                        ( led                           )
     );
     
     // -------------------------------------------------------------------------
@@ -158,7 +167,16 @@ module pcileech_75t484_x1_vmd_top #(
         .pcie_lnk_up                ( pcie_lnk_up                   ),
         // TLP数据接口
         .dfifo                      ( dfifo                         ),
-        .dshadow2fifo               ( dshadow2fifo                  )
+        .dshadow2fifo               ( dshadow2fifo                  ),
+        .pcie_id                    ( pcie_id                       ),
+        .device_id_version          ( device_id_version             ),
+        .pcie_tlps_rx               ( if_axis_tlps_rx               ),
+        .pcie_tlps_tx               ( if_axis_tlps_tx               ),
+        .pcie_tlps_tx_nouse         ( if_axis_tlps_tx_nouse         ),
+        .pcie_cfg                   ( if_pcie_cfg                   ),
+        .pcie_status                ( pcie_status                   ),
+        .cfg_pcie_busdev            ( {cfg_bus_number, cfg_device_number} ),
+        .cfg_pcie_func              ( cfg_function_number             )
     );
     
     // -------------------------------------------------------------------------
@@ -179,5 +197,96 @@ module pcileech_75t484_x1_vmd_top #(
     // LED状态指示
     assign user_ld1_n = ~(led_state & pcie_lnk_up);  // LED1指示设备状态和PCIe链路建立
     assign user_ld2_n = ~led_identify;               // LED2指示通信识别
+
+    // -------------------------------------------------------------------------
+    // 其他控制和调试接口
+    // -------------------------------------------------------------------------
+    
+    wire [7:0]          cfg_bus_number;
+    wire [4:0]          cfg_device_number;
+    wire [2:0]          cfg_function_number;
+    
+    // -------------------------------------------------------------------------
+    // TLP监控模块 - 用于调试TLP流量
+    // -------------------------------------------------------------------------
+    pcileech_tlps128_monitor i_pcileech_tlps128_monitor(
+        .rst                    ( pcie_reset                    ),
+        .clk_pcie               ( pcie_clk                        ),
+        .clk_sys                ( clk                             ),
+        .tlps_in                ( if_axis_tlps_rx                   ),
+        .tlps_mon               ( if_axis_tlps_rx_mon               )
+    );
+    
+    // -------------------------------------------------------------------------
+    // 多功能VMD/NVMe配置空间控制器
+    // -------------------------------------------------------------------------
+    pcileech_tlps128_multifunc_controller i_pcileech_tlps128_multifunc_controller(
+        .rst                    ( pcie_reset                        ),
+        .clk_pcie               ( pcie_clk                            ),
+        .clk_sys                ( clk                                 ),
+        .tlps_in                ( if_axis_tlps_rx                       ),
+        .pcie_id                ( pcie_id                               ),
+        .tlps_cfg_rsp           ( if_axis_cfg_rsp                       ),
+        
+        // 设备配置参数
+        .function_count         ( PARAM_FUNCTION_COUNT                  ),
+        .device_class           ( PARAM_DEVICE_CLASS                      ),
+        .device_subclass        ( PARAM_DEVICE_SUBCLASS                     ),
+        .device_interface       ( PARAM_DEVICE_INTERFACE                    ),
+        .device_id              ( PARAM_DEVICE_ID                             ),
+        .vendor_id              ( PARAM_VENDOR_ID                               ),
+        
+        // BAR空间地址配置
+        .bar0_base_addr         ( bar0_initial                            ),
+        .bar1_base_addr         ( bar1_initial                              ),
+        .bar2_base_addr         ( bar2_initial                                ),
+        
+        // 调试和状态输出
+        .debug_status           ( multifunc_status                          ),
+        
+        // 与其他模块的接口
+        .dshadow2fifo           ( if_shadow2fifo                              )
+    );
+    
+    // -------------------------------------------------------------------------
+    // BAR控制器
+    // -------------------------------------------------------------------------
+    pcileech_tlps128_bar_controller i_pcileech_tlps128_bar_controller(
+        .rst                    ( pcie_reset                                ),
+        .clk_pcie               ( pcie_clk                                    ),
+        .clk_sys                ( clk                                         ),
+        .tlps_in                ( if_axis_tlps_rx                               ),
+        .pcie_id                ( pcie_id                                       ),
+        .bar_req                ( if_axis_bar_req                               ),
+        .bar_rsp                ( if_axis_bar_rsp                               ),
+        .tlps_out               ( if_axis_tlps_tx                               ),
+        .dshadow2fifo           ( if_shadow2fifo                                  )
+    );
+    
+    // -------------------------------------------------------------------------
+    // VMD BAR实现 - 包含MSI-X中断支持
+    // -------------------------------------------------------------------------
+    pcileech_bar_impl_vmd_msix i_pcileech_bar_impl_vmd_msix(
+        .rst                    ( pcie_reset                                    ),
+        .clk_pcie               ( pcie_clk                                        ),
+        .clk_sys                ( clk                                             ),
+        .bar_req                ( if_axis_bar_req                                  ),
+        .bar_rsp                ( if_axis_bar_rsp                                  )
+    );
+    
+    // -------------------------------------------------------------------------
+    // TLP多路选择器 - 集合多个源到单一目的地
+    // -------------------------------------------------------------------------
+    pcileech_mux i_pcileech_mux(
+        .rst                    ( pcie_reset                                    ),
+        .clk_pcie               ( pcie_clk                                        ),
+        .clk_sys                ( clk                                             ),
+        .sink                   ( if_axis_tlps_tx_nouse                              ),
+        .sources_0              ( if_axis_cfg_rsp                                      ),
+        .sources_1              ( if_axis_bar_rsp                                      ),
+        .sources_2              ( if_axis_tlps_tx                                        ),
+        .sources_3              ( if_axis_tlps_tx                                        ),
+        .status                 ( memrw_status                                         )
+    );
 
 endmodule
