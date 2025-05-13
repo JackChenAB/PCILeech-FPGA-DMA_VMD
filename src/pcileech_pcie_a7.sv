@@ -23,13 +23,12 @@ module pcileech_pcie_a7(
     input                   pcie_clk_n,
     input                   pcie_perst_n,
     
-    // State and Activity LEDs
-    output                  led_state,
+    // PCIe status
+    output                  pcie_clk,        // PCIe参考时钟输出
+    output                  pcie_lnk_up,     // PCIe链路状态输出
     
-    // PCIe <--> FIFOs
-    IfPCIeFifoCfg.mp_pcie   dfifo_cfg,
-    IfPCIeFifoTlp.mp_pcie   dfifo_tlp,
-    IfPCIeFifoCore.mp_pcie  dfifo_pcie,
+    // FIFO <--> PCIe接口
+    IfPCIeFifoTlp.mp_pcie   dfifo,
     IfShadow2Fifo.shadow    dshadow2fifo
     );
        
@@ -51,8 +50,8 @@ module pcileech_pcie_a7(
     wire pcie_clk_c;
     wire clk_pcie;
     wire rst_pcie_user;
-    wire rst_subsys = rst || rst_pcie_user || dfifo_pcie.pcie_rst_subsys;
-    wire rst_pcie = rst || ~pcie_perst_n || dfifo_pcie.pcie_rst_core;
+    wire rst_subsys = rst || rst_pcie_user || dfifo.pcie_rst_subsys;
+    wire rst_pcie = rst || ~pcie_perst_n || dfifo.pcie_rst_core;
        
     // Buffer for differential system clock
     IBUFDS_GTE2 refclk_ibuf (.O(pcie_clk_c), .ODIV2(), .I(pcie_clk_p), .CEB(1'b0), .IB(pcie_clk_n));
@@ -64,7 +63,6 @@ module pcileech_pcie_a7(
     time tickcount64_pcie_refclk = 0;
     always @ ( posedge pcie_clk_c )
         tickcount64_pcie_refclk <= tickcount64_pcie_refclk + 1;
-    assign led_state = user_lnk_up || tickcount64_pcie_refclk[25];
     
     // ----------------------------------------------------------------------------
     // PCIe CFG RX/TX <--> FIFO below
@@ -245,12 +243,12 @@ module pcileech_pcie_a7(
         
         // DRP - clock domain clk_100 - write should only happen when core is in reset state ...
         .pcie_drp_clk               ( clk_sys                           ),  // <-
-        .pcie_drp_en                ( dfifo_pcie.drp_en                 ),  // <-
-        .pcie_drp_we                ( dfifo_pcie.drp_we                 ),  // <-
-        .pcie_drp_addr              ( dfifo_pcie.drp_addr               ),  // <- [8:0]
-        .pcie_drp_di                ( dfifo_pcie.drp_di                 ),  // <- [15:0]
-        .pcie_drp_rdy               ( dfifo_pcie.drp_rdy                ),  // ->
-        .pcie_drp_do                ( dfifo_pcie.drp_do                 ),  // -> [15:0]
+        .pcie_drp_en                ( dfifo.drp_en                 ),  // <-
+        .pcie_drp_we                ( dfifo.drp_we                 ),  // <-
+        .pcie_drp_addr              ( dfifo.drp_addr               ),  // <- [8:0]
+        .pcie_drp_di                ( dfifo.drp_di                 ),  // <- [15:0]
+        .pcie_drp_rdy               ( dfifo.drp_rdy                ),  // ->
+        .pcie_drp_do                ( dfifo.drp_do                 ),  // -> [15:0]
     
         // user interface
         .user_clk_out               ( clk_pcie                          ),  // ->
@@ -258,6 +256,9 @@ module pcileech_pcie_a7(
         .user_lnk_up                ( user_lnk_up                       ),  // ->
         .user_app_rdy               (                                   )   // ->
     );
+
+    assign pcie_clk = clk_pcie;
+    assign pcie_lnk_up = user_lnk_up;
 
 endmodule
 

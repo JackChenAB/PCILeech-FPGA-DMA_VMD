@@ -15,24 +15,25 @@
 module pcileech_com (
     // SYS
     input               clk,                // 100MHz SYSTEM CLK
-    input               clk_com,            // COMMUNICATION CORE CLK
     input               rst,
-    output              led_state_txdata,
-    input               led_state_invert,
+    output reg          led_state = 1'b0,   // 状态LED输出
+    output reg          led_identify = 1'b0,// 识别LED输出
 
     // TO/FROM FIFO
     IfComToFifo.mp_com  dfifo,
 
 `ifdef ENABLE_FT601
     // FT601
-    inout   [31:0]      ft601_data,
-    output  [3:0]       ft601_be,
-    input               ft601_rxf_n,
-    input               ft601_txe_n,
-    output              ft601_wr_n,
-    output              ft601_siwu_n,
-    output              ft601_rd_n,
-    output              ft601_oe_n
+    input               ft601_clk,          // FT601时钟
+    output              ft601_rst_n,        // FT601复位信号(低有效)
+    inout   [31:0]      ft601_data,         // FT601数据线
+    output  [3:0]       ft601_be,           // FT601字节使能
+    input               ft601_rxf_n,        // FT601接收FIFO非空(低有效)
+    input               ft601_txe_n,        // FT601发送FIFO非满(低有效)
+    output              ft601_wr_n,         // FT601写使能(低有效)
+    output              ft601_siwu_n,       // FT601写提交(低有效)
+    output              ft601_rd_n,         // FT601读使能(低有效)
+    output              ft601_oe_n          // FT601输出使能(低有效)
 `endif /* ENABLE_FT601 */    
 `ifdef ENABLE_ETH
     // ETH

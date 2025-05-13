@@ -73,6 +73,11 @@ module pcileech_75t484_x1_vmd_top #(
     // SYSTEM CORE
     // -------------------------------------------------------------------------
     
+    // 创建需要的接口实例
+    IfComToFifo     dcom_fifo();
+    IfPCIeFifoCfg   dcfg();
+    IfPCIeFifoCore  dpcie();
+    
     pcileech_fifo #(
         .PARAM_DEVICE_ID            ( PARAM_DEVICE_ID               ),
         .PARAM_VERSION_NUMBER_MAJOR ( PARAM_VERSION_NUMBER_MAJOR    ),
@@ -80,12 +85,31 @@ module pcileech_75t484_x1_vmd_top #(
         .PARAM_CUSTOM_VALUE         ( PARAM_CUSTOM_VALUE            )
     ) i_pcileech_fifo (
         .clk                        ( clk                           ),
-        .clk_pcie                   ( pcie_clk                      ),
         .rst                        ( pcie_reset                    ),
-        // FIFO CTL
-        .led_state                  ( led_state                     ),
-        .led_identify               ( led_identify                  ),
-        // FIFO DATA
+        .rst_cfg_reload             ( 1'b0                          ),  // 不使用配置重载功能
+        
+        .pcie_present               ( pcie_present                  ),
+        .pcie_perst_n               ( pcie_perst_n                  ),
+        
+        // FIFO CTL <--> COM CTL
+        .dcom                       ( dcom_fifo.mp_fifo             ),
+        
+        // FIFO CTL <--> PCIe
+        .dcfg                       ( dcfg.mp_fifo                  ),
+        .dtlp                       ( dfifo.mp_fifo                 ),
+        .dpcie                      ( dpcie.mp_fifo                 ),
+        .dshadow2fifo               ( dshadow2fifo.fifo             )
+    );
+    
+    // 创建FT601通信模块
+    pcileech_com i_pcileech_com(
+        .clk                        ( clk                           ),
+        .rst                        ( pcie_reset                    ),
+        
+        // FIFO接口
+        .dfifo                      ( dcom_fifo.mp_com              ),
+        
+        // FT601接口
         .ft601_clk                  ( ft601_clk                     ),
         .ft601_rst_n                ( ft601_rst_n                   ),
         .ft601_data                 ( ft601_data                    ),
@@ -96,9 +120,10 @@ module pcileech_75t484_x1_vmd_top #(
         .ft601_siwu_n               ( ft601_siwu_n                  ),
         .ft601_rd_n                 ( ft601_rd_n                    ),
         .ft601_oe_n                 ( ft601_oe_n                    ),
-        // PCIe TLP
-        .dfifo                      ( dfifo                         ),
-        .dshadow2fifo               ( dshadow2fifo                  )
+        
+        // 状态信号
+        .led_state                  ( led_state                     ),
+        .led_identify               ( led_identify                  )
     );
     
     // -------------------------------------------------------------------------
