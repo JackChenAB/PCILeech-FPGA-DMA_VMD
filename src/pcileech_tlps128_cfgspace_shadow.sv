@@ -12,6 +12,8 @@
 
 `timescale 1ns / 1ps
 
+`include "pcileech_rw1c_register.sv"
+
 module pcileech_tlps128_cfgspace_shadow(
     input                   rst,
     input                   clk_pcie,
@@ -355,6 +357,145 @@ module pcileech_tlps128_cfgspace_shadow(
         .empty          ( usb_fifo_empty            ),
         .valid          ( dshadow2fifo.tx_valid     )
     );
+    
+    // RW1C状态寄存器处理
+    wire [15:0] pcie_status;           // 状态寄存器值
+    reg         pcie_status_wr_en;     // 状态寄存器写使能
+    reg [15:0]  pcie_status_wr_data;   // 状态寄存器写数据
+    reg [15:0]  pcie_status_wr_mask;   // 状态寄存器写掩码
+    wire [7:0]  status_access_count;   // 状态寄存器访问计数
+    
+    // 添加配置空间TLP错误事件信号
+    reg         tlp_err_cor;           // 可纠正错误
+    reg         tlp_err_fatal;         // 致命错误
+    reg         tlp_err_ur;            // 不支持的请求
+    reg         tlp_master_abort;      // 主控终止
+    
+    // 使用RW1C寄存器模块处理PCIe设备状态寄存器
+    // 默认值: 0x0010 (Capabilities List位设置为1)
+    pcileech_rw1c_register #(
+        .WIDTH(16),
+        .DEFAULT_VALUE(16'h0010)
+    ) pcie_status_reg (
+        .clk(clk_pcie),
+        .rst(rst),
+        
+        // 写入控制
+        .wr_en(pcie_status_wr_en),
+        .wr_data(pcie_status_wr_data),
+        .wr_mask(pcie_status_wr_mask),
+        
+        // 特殊控制 - 如果使用了PCIe命令cfg_mgmt_wr_rw1c_as_rw则传递此信号
+        .force_rw_mode(pcie_rx_status[2]),
+        
+        // 硬件事件设置
+        .hw_set_en(tlp_err_cor || tlp_err_fatal || tlp_err_ur || tlp_master_abort),
+        .hw_set_data({
+            tlp_err_fatal ? 16'h4000 : 16'h0000 |    // 位14 - Detected Parity Error
+            (tlp_err_cor || tlp_err_fatal) ? 16'h2000 : 16'h0000 |  // 位13 - Signaled System Error
+            tlp_master_abort ? 16'h1000 : 16'h0000 |  // 位12 - Received Master Abort 
+            tlp_err_ur ? 16'h0800 : 16'h0000          // 位11 - Received Target Abort
+        }),
+        .hw_set_mask(16'h7800),  // 位11-14的掩码
+        
+        // 读取接口
+        .rd_data(pcie_status),
+        
+        // 状态和诊断输出
+        .reg_value(),
+        .access_count(status_access_count),
+        .is_zero()
+    );
+
+    // 配置空间读取及应答生成
+    always @ ( posedge clk_pcie )
+    begin
+        if ( rst ) begin
+            shadow_valid <= 1'b0;
+            shadow_mask <= 4'b0000;
+            shadow_data <= 32'h0;
+            shadow_addr <= 10'h0;
+            
+            pcie_status_wr_en <= 0;
+            pcie_status_wr_data <= 0;
+            pcie_status_wr_mask <= 0;
+            
+            tlp_err_cor <= 0;
+            tlp_err_fatal <= 0;
+            tlp_err_ur <= 0;
+            tlp_master_abort <= 0;
+        end else begin
+            // 重置错误信号
+            tlp_err_cor <= 0;
+            tlp_err_fatal <= 0;
+            tlp_err_ur <= 0;
+            tlp_master_abort <= 0;
+            
+            // 重置RW1C写控制信号
+            pcie_status_wr_en <= 0;
+            
+            // 当配置空间读操作有效时
+            if ( pcie_rx_valid && pcie_rx_rden ) begin
+                shadow_valid <= 1'b1;
+                shadow_mask <= 4'b1111;
+                shadow_addr <= pcie_rx_addr;
+                
+                // 特殊处理状态寄存器读取 (地址0x01 - Command/Status寄存器)
+                if (pcie_rx_addr == 10'h01) begin
+                    // 组合Command寄存器和Status寄存器
+                    // PCIe状态寄存器为高16位
+                    shadow_data <= {pcie_status, config[pcie_rx_addr][15:0]};
+                end else begin
+                    shadow_data <= config[pcie_rx_addr];
+                end
+            end
+            // 当配置空间写操作有效时
+            else if ( pcie_rx_valid && pcie_rx_wren ) begin
+                shadow_valid <= 1'b1;
+                shadow_mask <= 4'b0000;
+                shadow_addr <= pcie_rx_addr;
+                
+                // 更新对应配置空间寄存器
+                if (pcie_rx_addr == 10'h01) begin
+                    // 如果是Command/Status寄存器，仅处理Command部分
+                    // Status部分使用RW1C寄存器处理
+                    if (tlps_in.tkeep[0]) config[pcie_rx_addr][7:0] <= tlps_in.tdata[7:0];
+                    if (tlps_in.tkeep[1]) config[pcie_rx_addr][15:8] <= tlps_in.tdata[15:8];
+                    
+                    // 使用RW1C寄存器处理Status部分
+                    if (tlps_in.tkeep[2] || tlps_in.tkeep[3]) begin
+                        pcie_status_wr_en <= 1'b1;
+                        pcie_status_wr_data <= tlps_in.tdata[31:16];
+                        pcie_status_wr_mask <= {tlps_in.tkeep[3] ? 8'hFF : 8'h00, tlps_in.tkeep[2] ? 8'hFF : 8'h00};
+                    end
+                end else begin
+                    // 其他寄存器正常处理
+                    if (tlps_in.tkeep[0]) config[pcie_rx_addr][7:0] <= tlps_in.tdata[7:0];
+                    if (tlps_in.tkeep[1]) config[pcie_rx_addr][15:8] <= tlps_in.tdata[15:8];
+                    if (tlps_in.tkeep[2]) config[pcie_rx_addr][23:16] <= tlps_in.tdata[23:16];
+                    if (tlps_in.tkeep[3]) config[pcie_rx_addr][31:24] <= tlps_in.tdata[31:24];
+                end
+            end else begin
+                shadow_valid <= 1'b0;
+            end
+            
+            // 配置空间错误检测和处理
+            // 当检测到不支持的请求，设置对应错误标志
+            if (pcie_rx_valid && (pcie_rx_addr >= 10'h100)) begin
+                tlp_err_ur <= 1;
+            end
+            
+            // 检测TLP错误
+            if (tlps_in.tvalid && tlps_in.tuser[31]) begin
+                tlp_err_fatal <= 1;  // 设置致命错误标志
+            end
+            
+            // 检测主控终止
+            if (pcie_rx_valid && pcie_rx_rden && (pcie_rx_addr >= 10'h40) && (pcie_rx_addr < 10'h100)) begin
+                tlp_master_abort <= 1;  // 访问未实现的配置空间区域
+            end
+        end
+    end
     
 endmodule
 

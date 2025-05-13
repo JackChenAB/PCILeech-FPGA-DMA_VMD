@@ -13,6 +13,7 @@
 
 `timescale 1ns / 1ps
 `include "pcileech_header.svh"
+`include "pcileech_rw1c_register.sv"
 
 // ------------------------------------------------------------------------
 // BAR implementation with MSI-X and PCIe capability support for NVMe controller simulation
@@ -66,9 +67,80 @@ module pcileech_bar_impl_vmd_msix(
     reg msix_error_detected;      // MSI-X错误检测标志
     reg [7:0] msix_error_counter; // MSI-X错误计数器
     
-    // 初始化MSI-X错误检测相关寄存器 - 全面增强版
+    // RW1C寄存器控制信号 - PCIe状态寄存器
+    reg         pcie_status_wr_en;     // 状态寄存器写使能
+    reg [15:0]  pcie_status_wr_data;   // 状态寄存器写数据
+    reg [15:0]  pcie_status_wr_mask;   // 状态寄存器写掩码
+    wire [15:0] pcie_status;           // 状态寄存器当前值
+    reg         pcie_force_rw1c_as_rw; // 强制RW1C作为RW
+    
+    // 硬件事件信号
+    reg         hw_status_set_en;      // 硬件设置使能
+    reg [15:0]  hw_status_set_data;    // 硬件设置数据
+    reg [15:0]  hw_status_set_mask;    // 硬件设置掩码
+    
+    // 状态寄存器监控
+    wire [7:0]  status_access_count;   // 状态寄存器访问计数
+    wire        status_alert;          // 状态寄存器警告标志
+    
+    // 使用RW1C寄存器模块处理PCIe设备状态寄存器
+    // 默认值: 0x0010 (Capabilities List位设置为1)
+    pcileech_rw1c_register #(
+        .WIDTH(16),
+        .DEFAULT_VALUE(16'h0010)
+    ) pcie_status_reg (
+        .clk(clk),
+        .rst(rst),
+        
+        // 写入控制
+        .wr_en(pcie_status_wr_en),
+        .wr_data(pcie_status_wr_data),
+        .wr_mask(pcie_status_wr_mask),
+        
+        // 特殊控制
+        .force_rw_mode(pcie_force_rw1c_as_rw),
+        
+        // 硬件事件设置
+        .hw_set_en(hw_status_set_en),
+        .hw_set_data(hw_status_set_data),
+        .hw_set_mask(hw_status_set_mask),
+        
+        // 读取接口
+        .rd_data(pcie_status),
+        
+        // 状态和诊断输出
+        .reg_value(),
+        .access_count(status_access_count),
+        .is_zero()
+    );
+    
+    // MSI-X错误检测和恢复逻辑 - 增强版
+    reg [2:0] interrupt_valid_counter; // 中断有效信号持续时间计数器
+    reg [7:0] error_recovery_counter;  // 错误恢复计数器
+    reg [15:0] msix_active_vectors;    // 活动中断向量状态
+    reg [15:0] msix_error_vectors;     // 错误中断向量状态
+    reg [3:0]  msix_error_cnt;         // 错误计数器
+    reg        msix_error_overflow;     // 错误溢出标志
+    
+    // 初始化计数器和状态寄存器
     initial begin
-        // 错误检测相关寄存器初始化
+        interrupt_valid_counter = 3'b000;
+        error_recovery_counter = 8'h00;
+        msix_active_vectors = 16'h0000;
+        msix_error_vectors = 16'h0000;
+        msix_error_cnt = 4'h0;
+        msix_error_overflow = 1'b0;
+        
+        // 初始化RW1C控制信号
+        pcie_status_wr_en = 0;
+        pcie_status_wr_data = 0;
+        pcie_status_wr_mask = 0;
+        pcie_force_rw1c_as_rw = 0;
+        hw_status_set_en = 0;
+        hw_status_set_data = 0;
+        hw_status_set_mask = 0;
+        
+        // 初始化MSI-X错误检测相关寄存器 - 全面增强版
         msix_error_detected = 1'b0;
         msix_error_counter = 8'h00;
         msix_interrupt_error = 1'b0;
@@ -87,24 +159,6 @@ module pcileech_bar_impl_vmd_msix(
         msix_masked = 1'b1;  // 默认屏蔽所有中断
     end
     
-    // MSI-X错误检测和恢复逻辑 - 增强版
-    reg [2:0] interrupt_valid_counter; // 中断有效信号持续时间计数器
-    reg [7:0] error_recovery_counter;  // 错误恢复计数器
-    reg [15:0] msix_active_vectors;    // 活动中断向量状态
-    reg [15:0] msix_error_vectors;     // 错误中断向量状态
-    reg [3:0]  msix_error_cnt;         // 错误计数器
-    reg        msix_error_overflow;     // 错误溢出标志
-    
-    // 初始化计数器和状态寄存器
-    initial begin
-        interrupt_valid_counter = 3'b000;
-        error_recovery_counter = 8'h00;
-        msix_active_vectors = 16'h0000;
-        msix_error_vectors = 16'h0000;
-        msix_error_cnt = 4'h0;
-        msix_error_overflow = 1'b0;
-    end
-    
     always @(posedge clk) begin
         if (rst) begin
             msix_error_detected <= 1'b0;
@@ -113,6 +167,9 @@ module pcileech_bar_impl_vmd_msix(
             msix_interrupt_valid <= 1'b0;
             interrupt_valid_counter <= 3'b000;
             error_recovery_counter <= 8'h00;
+            hw_status_set_en <= 0;
+            hw_status_set_data <= 0;
+            hw_status_set_mask <= 0;
         end else begin
             // 错误检测逻辑 - 增强版
             if ((msix_interrupt_valid && !msix_enabled) || 
@@ -163,6 +220,19 @@ module pcileech_bar_impl_vmd_msix(
             end else begin
                 // 无错误时重置恢复计数器
                 error_recovery_counter <= 8'h00;
+            end
+            
+            // 硬件事件处理逻辑
+            if (msix_error_detected) begin
+                // 设置系统错误标志（位13）和奇偶校验错误标志（位14）
+                hw_status_set_en <= 1;
+                hw_status_set_data <= 16'h6000; // 位13和14
+                hw_status_set_mask <= 16'h6000;
+            end
+            
+            // 每次完成RW1C寄存器操作后复位控制信号
+            if (pcie_status_wr_en) begin
+                pcie_status_wr_en <= 0;
             end
         end
     end
@@ -317,11 +387,22 @@ module pcileech_bar_impl_vmd_msix(
                     case (index)
                         0: begin  // Capability Header - 只读
                         end
-                        2: begin  // Device Control
+                        2: begin  // Device Control and Status
+                            // 只处理Control部分，Status由RW1C寄存器处理
                             if (wr_be[0]) pcie_cap_regs[index][7:0] <= wr_data[7:0] & 8'hFF;
                             if (wr_be[1]) pcie_cap_regs[index][15:8] <= wr_data[15:8] & 8'hFF;
-                            if (wr_be[2]) pcie_cap_regs[index][23:16] <= wr_data[23:16] & 8'h0F; // Status位
-                            if (wr_be[3]) pcie_cap_regs[index][31:24] <= wr_data[31:24] & 8'h00; // 保留位
+                            
+                            // 对状态寄存器部分 (高16位) 使用RW1C寄存器
+                            if (wr_be[2] || wr_be[3]) begin
+                                pcie_status_wr_en <= 1'b1;
+                                pcie_status_wr_data <= wr_data[31:16];
+                                pcie_status_wr_mask <= {wr_be[3] ? 8'hFF : 8'h00, wr_be[2] ? 8'hFF : 8'h00};
+                                
+                                // 传递RW1C特殊标志
+                                pcie_force_rw1c_as_rw <= 0;  // 使用标准RW1C行为
+                            end else begin
+                                pcie_status_wr_en <= 1'b0;
+                            end
                         end
                         4: begin  // Link Control
                             if (wr_be[0]) pcie_cap_regs[index][7:0] <= wr_data[7:0] & 8'hFC;
@@ -466,7 +547,12 @@ module pcileech_bar_impl_vmd_msix(
             else if ((rd_req_addr_1 & 32'hFFFFFF00) == 32'h00000000) begin
                 int index = rd_req_addr_1[7:2];
                 if (index < 17) begin
-                    rd_rsp_data <= pcie_cap_regs[index];
+                    if (index == 2) begin
+                        // Device Control和Status寄存器 - 组合低16位控制寄存器和高16位状态寄存器
+                        rd_rsp_data <= {pcie_status, pcie_cap_regs[index][15:0]};
+                    end else begin
+                        rd_rsp_data <= pcie_cap_regs[index];
+                    end
                 end else begin
                     rd_rsp_data <= 32'h00000000;
                 end
