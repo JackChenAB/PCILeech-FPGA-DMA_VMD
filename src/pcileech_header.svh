@@ -321,6 +321,9 @@ interface IfShadow2Fifo;
     wire                alltlp_filter; // 全局TLP过滤
     wire                bar_en;        // BAR空间使能
     
+    // 调试信号
+    wire    [15:0]      debug_data;    // 调试数据输出，用于状态监控
+    
     // 控制位定义：
     // cfgtlp_en: TLP回响使能位，控制配置TLP的处理
     // cfgtlp_zero: 隐身模式使能位，用于zero4k伪装策略
@@ -330,12 +333,12 @@ interface IfShadow2Fifo;
     
     modport fifo (
         output cfgtlp_wren, cfgtlp_zero, rx_rden, rx_wren, rx_be, rx_addr, rx_addr_lo, rx_data, cfgtlp_en, cfgtlp_filter, alltlp_filter, bar_en,
-        input tx_valid, tx_addr, tx_addr_lo, tx_data
+        input tx_valid, tx_addr, tx_addr_lo, tx_data, debug_data
     );
 
     modport shadow (
         input cfgtlp_wren, cfgtlp_zero, rx_rden, rx_wren, rx_be, rx_addr, rx_addr_lo, rx_data, cfgtlp_en, cfgtlp_filter, alltlp_filter, bar_en,
-        output tx_valid, tx_addr, tx_addr_lo, tx_data
+        output tx_valid, tx_addr, tx_addr_lo, tx_data, debug_data
     );
 endinterface
 

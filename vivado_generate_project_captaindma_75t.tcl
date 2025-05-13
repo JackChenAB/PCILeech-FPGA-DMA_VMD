@@ -115,7 +115,7 @@ set files [list \
  [file normalize "${origin_dir}/src/pcileech_pcie_cfg_a7.sv"]\
  [file normalize "${origin_dir}/src/pcileech_pcie_tlp_a7.sv"]\
  [file normalize "${origin_dir}/src/pcileech_tlps128_bar_controller.sv"]\
- [file normalize "${origin_dir}/src/pcileech_tlps128_cfgspace_shadow.sv"]\
+ [file normalize "${origin_dir}/src/pcileech_tlps128_cfgspace_shadow_advanced.sv"]\
  [file normalize "${origin_dir}/src/pcileech_75t484_x1_vmd_top.sv"]\
  [file normalize "${origin_dir}/src/pcileech_rw1c_register.sv"]\
  [file normalize "${origin_dir}/src/pcileech_pcie_tlps128_status.sv"]\
@@ -160,7 +160,7 @@ set file "src/pcileech_tlps128_bar_controller.sv"
 set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
 set_property -name "file_type" -value "SystemVerilog" -objects $file_obj
 
-set file "src/pcileech_tlps128_cfgspace_shadow.sv"
+set file "src/pcileech_tlps128_cfgspace_shadow_advanced.sv"
 set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
 set_property -name "file_type" -value "SystemVerilog" -objects $file_obj
 
@@ -851,10 +851,9 @@ set_property -name "steps.write_bitstream.args.bin_file" -value "1" -objects $ob
 set_property -name "steps.write_bitstream.args.readback_file" -value "0" -objects $obj
 set_property -name "steps.write_bitstream.args.verbose" -value "0" -objects $obj
 
-# set the current impl run
-current_run -implementation [get_runs impl_1]
+# set the current synth run
+current_run -synthesis [get_runs synth_1]
 
-puts "INFO: Project created:${_xil_proj_name_}"
 # Create 'drc_1' gadget (if not found)
 if {[string equal [get_dashboard_gadgets  [ list "drc_1" ] ] ""]} {
 create_dashboard_gadget -name {drc_1} -type drc

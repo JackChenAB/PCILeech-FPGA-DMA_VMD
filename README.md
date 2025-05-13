@@ -1,5 +1,9 @@
 # PCILeech FPGA DMA 仿真 VMD 控制器项目
 
+<div align="right">
+    <a href="README.md">中文</a> | <a href="README-EN.md">English</a>
+</div>
+
 ## 免责声明
 本项目仅用于研究、教育与安全测试目的。作者不鼓励、支持或容忍任何使用本项目进行下列行为：
 - 未经授权访问或控制他人计算机系统；
@@ -61,7 +65,7 @@
 - **pcileech_bar_impl_vmd_msix.sv** - 实现带MSI-X中断功能的BAR，支持VMD控制器和NVMe命令处理
 - **pcileech_rw1c_register.sv** - 标准PCIe RW1C寄存器实现，提供状态寄存器操作功能
 - **pcileech_pcie_tlps128_status.sv** - PCIe TLP设备状态寄存器模块，使用RW1C处理状态位
-- **pcileech_tlps128_monitor.sv** - 访问监控模块，提供系统稳定性支持（替代原anti_cheat模块）
+- **pcileech_tlps128_monitor.sv** - 访问监控模块，提供系统稳定性支持
 
 ## 项目结构
 
