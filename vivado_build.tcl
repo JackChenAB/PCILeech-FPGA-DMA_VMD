@@ -1,6 +1,7 @@
 #
 # RUN FROM WITHIN "Vivado Tcl Shell" WITH COMMAND:
 # source vivado_build.tcl -notrace
+# TODO: 需要修改为自动生成项目名称
 #
 puts "-------------------------------------------------------"
 puts " STARTING SYNTHESIS STEP.                              "
