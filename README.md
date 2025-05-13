@@ -20,6 +20,8 @@
 
 ## 最新更新
 
+- **代码架构优化** - 重构顶层模块和接口定义，提高代码可维护性和稳定性
+- **模块接口修复** - 修复了pcileech_com和pcie_a7模块接口不一致问题
 - **IP核优化** - 修复了配置空间内存深度，支持更完整的VMD能力集合
 - **安全性增强** - 添加了访问模式识别和动态响应控制机制
 - **隐身模式** - 实现了TLP回响和扫描检测功能，应对安全监控
@@ -39,39 +41,46 @@
 3. **MSI-X中断支持** - 实现MSI-X中断机制，确保与现代操作系统兼容
 4. **BAR空间实现** - 提供完整的基地址寄存器（BAR）空间实现，支持内存映射操作
 5. **动态响应机制** - 智能识别系统查询模式，自适应调整响应策略
+6. **PCIe桥接器模拟** - 将设备类型定义为PCI-to-PCI桥接器（类代码：060400），增强兼容性
+7. **RW1C寄存器标准实现** - 符合PCIe规范的RW1C寄存器操作，保证状态位正确处理
 
 ### 关键模块说明
 
+- **pcileech_75t484_x1_vmd_top.sv** - 顶层模块，集成所有功能组件，新增VMD特定参数
 - **pcileech_fifo.sv** - FIFO网络控制模块，负责数据传输和命令处理
+- **pcileech_com.sv** - 通信控制模块，处理FT601和系统间通信，修复了接口一致性问题
 - **pcileech_ft601.sv** - FT601/FT245控制器模块，处理USB通信
+- **pcileech_pcie_a7.sv** - PCIe控制器模块，修复了接口定义，新增PCIe状态输出
 - **pcileech_pcie_cfg_a7.sv** - PCIe配置模块，处理Artix-7的CFG操作
 - **pcileech_tlps128_cfgspace_shadow.sv** - 配置空间阴影模块，支持动态配置响应
 - **pcileech_tlps128_cfgspace_shadow_advanced.sv** - 增强型配置空间，支持访问模式分析
 - **pcileech_pcie_tlp_a7.sv** - TLP处理核心，支持回响和隐身模式
 - **pcileech_bar_impl_vmd_msix.sv** - 实现带MSI-X中断功能的BAR，支持VMD控制器
-- **pcileech_75t484_x1_vmd_top.sv** - 顶层模块，集成所有功能组件
 - **pcileech_rw1c_register.sv** - 标准PCIe RW1C寄存器实现，提供状态寄存器操作功能
 - **pcileech_pcie_tlps128_status.sv** - PCIe TLP设备状态寄存器模块，使用RW1C处理状态位
-- **pcileech_tlps128_monitor.sv** - 访问监控模块，提供系统稳定性支持
+- **pcileech_tlps128_monitor.sv** - 访问监控模块，提供系统稳定性支持（替代原anti_cheat模块）
 
 ## 项目结构
 
 - `ip/` - 包含项目所需的IP核文件
   - 包括PCIe接口、FIFO、BRAM等IP核
   - 最新版本已修复内存深度和COE文件格式问题
+  - 新增pcileech_cfgspace_writemask.coe文件，支持RW1C寄存器正确操作
 - `src/` - 包含SystemVerilog源代码文件
   - 核心功能模块和顶层设计
-- `vivado_build.tcl` - Vivado构建脚本
-- `vivado_generate_project_captaindma_75t.tcl` - 项目生成脚本
+  - 新增VMD专用的顶层模块和支持文件
+- `vivado_build.tcl` - Vivado构建脚本，已优化自动识别项目名称
+- `vivado_generate_project_captaindma_75t.tcl` - 项目生成脚本，修复了文件引用不一致问题
 
 ## IP核修复说明
 
 最新版本修复了以下IP核相关问题：
 
 1. **配置空间深度扩展** - 将BRAM深度从1024增加到2048，支持完整的VMD控制器特性
-2. **COE文件格式修正** - 添加了正确的初始化格式头部
-3. **BAR空间内存扩展** - 支持更大的寄存器区域，满足MSI-X表和PBA需求
-4. **Vendor/Device ID一致性** - 确保所有模块使用统一的厂商ID和设备ID
+2. **写掩码文件创建** - 添加了pcileech_cfgspace_writemask.coe文件，实现PCIe标准的RW1C寄存器功能
+3. **COE文件格式修正** - 添加了正确的初始化格式头部
+4. **BAR空间内存扩展** - 支持更大的寄存器区域，满足MSI-X表和PBA需求
+5. **Vendor/Device ID一致性** - 确保所有模块使用统一的厂商ID和设备ID
 
 ## 构建说明
 
@@ -104,6 +113,8 @@
 - DMA攻击测试
 - 硬件安全研究
 - NVMe命令模拟（新增功能）
+- VMD控制器高级特性仿真
+- NVMe虚拟端点呈现
 
 ## 技术规格
 
@@ -111,7 +122,7 @@
 - **PCIe接口**：Gen2 x1
 - **USB接口**：通过FT601实现高速数据传输
 - **仿真设备**：Intel RST VMD控制器（设备ID：9A0B）
-- **PCI类代码**：080600（Intel VMD控制器）
+- **PCI类代码**：060400（PCI桥接器）
 - **内存容量**：支持最大2048深度的配置空间，4K的BAR空间
 - **RW1C寄存器规格**：
   - 支持最大32位宽度，可配置默认值
@@ -119,6 +130,11 @@
   - 访问计数最大支持255次
   - 16位访问历史模式记录，用于监控访问模式
   - 内置恢复机制，防止永久锁死
+- **DMA稳定性保障**：
+  - 改进的接口连接确保数据流通畅
+  - 模块间接口定义一致性修复
+  - 状态信号和复位逻辑优化
+  - 支持高速数据传输
 - **稳定性保障**：
   - 自适应超时恢复机制
   - 多级异常处理容错设计
@@ -138,6 +154,7 @@
    - 内置多种状态（正常、警告、恢复、错误）自动处理机制
    - 硬件事件设置接口，允许硬件自动设置对应状态位
    - 访问模式监控功能，确保设备稳定运行
+6. **接口代码隔离** - 优化模块间接口定义，提高代码隔离度，增强安全性
 
 ## 许可证信息
 
