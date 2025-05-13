@@ -56,6 +56,15 @@ module pcileech_bar_impl_vmd_msix(
     reg [15:0] vmd_admin_cq_size;  // 管理完成队列大小
     reg        vmd_controller_ready; // 控制器就绪状态
     
+    // VMD特定寄存器 - 增强VMD功能
+    reg [31:0] vmd_capabilities;     // VMD能力寄存器
+    reg [31:0] vmd_control;          // VMD控制寄存器
+    reg [31:0] vmd_status;           // VMD状态寄存器
+    reg [31:0] vmd_endpoint_count;   // VMD端点计数寄存器
+    reg [31:0] vmd_port_mapping[4:0]; // VMD端口映射寄存器
+    reg [31:0] vmd_error_status;     // VMD错误状态寄存器
+    reg [31:0] vmd_error_mask;       // VMD错误掩码寄存器
+    
     // NVMe寄存器 - 与VMD寄存器共用
     `define nvme_regs vmd_regs
     reg        nvme_controller_ready; // NVMe控制器就绪状态 - 与VMD控制器就绪状态共用
@@ -122,6 +131,18 @@ module pcileech_bar_impl_vmd_msix(
     reg [3:0]  msix_error_cnt;         // 错误计数器
     reg        msix_error_overflow;     // 错误溢出标志
     
+    // MSI-X中断触发逻辑 - 主要用于VMD控制器状态变化时触发中断
+    reg [7:0] msix_trigger_counter;  // 中断触发计数器
+    reg [3:0] msix_vector_index;     // 中断向量索引
+    reg       msix_pending_trigger;  // 挂起的中断触发请求
+    reg [1:0] msix_trigger_state;    // 触发状态机状态
+    
+    // 状态机状态定义
+    localparam MSIX_IDLE = 2'b00;       // 空闲状态
+    localparam MSIX_PREPARE = 2'b01;    // 准备触发状态
+    localparam MSIX_TRIGGER = 2'b10;    // 触发中断状态
+    localparam MSIX_WAIT = 2'b11;       // 等待完成状态
+    
     // 初始化计数器和状态寄存器
     initial begin
         interrupt_valid_counter = 3'b000;
@@ -157,144 +178,23 @@ module pcileech_bar_impl_vmd_msix(
         // 初始化MSI-X控制寄存器状态
         msix_enabled = 1'b0;
         msix_masked = 1'b1;  // 默认屏蔽所有中断
-    end
-    
-    always @(posedge clk) begin
-        if (rst) begin
-            msix_error_detected <= 1'b0;
-            msix_error_counter <= 8'h00;
-            msix_interrupt_error <= 1'b0;
-            msix_interrupt_valid <= 1'b0;
-            interrupt_valid_counter <= 3'b000;
-            error_recovery_counter <= 8'h00;
-            hw_status_set_en <= 0;
-            hw_status_set_data <= 0;
-            hw_status_set_mask <= 0;
-        end else begin
-            // 错误检测逻辑 - 增强版
-            if ((msix_interrupt_valid && !msix_enabled) || 
-                (msix_interrupt_valid && msix_masked) || 
-                (|msix_error_vectors)) begin  // 任何向量错误也会触发
-                msix_error_detected <= 1'b1;
-                msix_error_counter <= msix_error_counter + 1'b1;
-                msix_interrupt_error <= 1'b1;
-                
-                // 记录错误时增加恢复计数器
-                error_recovery_counter <= error_recovery_counter + 1'b1;
-            end
-            
-            // 中断有效信号自动清除 - 优化版
-            // 使用计数器确保中断信号保持足够的时钟周期但不会过长
-            if (msix_interrupt_valid) begin
-                // 使用计数器延迟清除中断有效信号，确保TLP引擎有足够时间捕获
-                interrupt_valid_counter <= interrupt_valid_counter + 1'b1;
-                
-                // 计数器达到预设值后清除中断有效信号 - 增加可配置性
-                if (interrupt_valid_counter >= 3'b101) begin // 增加持续时间
-                    msix_interrupt_valid <= 1'b0;
-                    interrupt_valid_counter <= 3'b000;
-                    
-                    // 清除中断地址和数据，防止残留
-                    msix_interrupt_addr <= 64'h0;
-                    msix_interrupt_data <= 32'h0;
-                end
-            end else begin
-                // 重置计数器
-                interrupt_valid_counter <= 3'b000;
-            end
-            
-            // 错误恢复逻辑 - 改进恢复机制
-            if (msix_error_detected) begin
-                // 使用独立计数器控制错误恢复时机
-                if (error_recovery_counter >= 8'h20) begin // 增加恢复延迟
-                    msix_error_detected <= 1'b0;
-                    msix_error_counter <= 8'h00;
-                    msix_interrupt_error <= 1'b0;
-                    error_recovery_counter <= 8'h00;
-                    
-                    // 清除所有错误向量
-                    msix_error_vectors <= 16'h0000;
-                    msix_error_cnt <= 4'h0;
-                    msix_error_overflow <= 1'b0;
-                end
-            end else begin
-                // 无错误时重置恢复计数器
-                error_recovery_counter <= 8'h00;
-            end
-            
-            // 硬件事件处理逻辑
-            if (msix_error_detected) begin
-                // 设置系统错误标志（位13）和奇偶校验错误标志（位14）
-                hw_status_set_en <= 1;
-                hw_status_set_data <= 16'h6000; // 位13和14
-                hw_status_set_mask <= 16'h6000;
-            end
-            
-            // 每次完成RW1C寄存器操作后复位控制信号
-            if (pcie_status_wr_en) begin
-                pcie_status_wr_en <= 0;
-            end
-        end
-    end
-    
-    // MSI-X表项 (支持16个中断向量)
-    reg [31:0] msix_table[63:0];  // 16个表项，每个表项4个DWORD (地址低32位，地址高32位，数据，控制)
-    reg [31:0] msix_pba;          // Pending Bit Array
-    
-    // PCIe能力结构寄存器
-    reg [31:0] pcie_cap_regs[16:0];  // PCIe能力寄存器
-    reg [31:0] pm_cap_regs[2:0];     // 电源管理能力寄存器
-    reg [31:0] vendor_cap_regs[4:0];  // 厂商特定能力寄存器
-    
-    // 请求延迟处理
-    bit [87:0]      rd_req_ctx_1;
-    bit [31:0]      rd_req_addr_1;
-    bit             rd_req_valid_1;
-    
-    // 初始化PCIe能力结构
-    initial begin
-        // PCI Express Capability (ID: 0x10) - 位于偏移0x000
-        // 链接到MSI-X能力 (Next Pointer = 0x01)
-        pcie_cap_regs[0] = 32'h10010142;  // Capability ID, Next Pointer, Version, Type (Root Complex Integrated Endpoint)
-        pcie_cap_regs[1] = 32'h02810001;  // Device Capabilities (Max Payload Size 256 bytes, Extended Tag Field)
-        pcie_cap_regs[2] = 32'h00100007;  // Device Control and Status (Enable Relaxed Ordering, Max Read Request Size 512 bytes)
-        pcie_cap_regs[3] = 32'h0211A000;  // Link Capabilities (Port Number 1, ASPM L0s/L1, Data Link Layer Active Reporting)
-        pcie_cap_regs[4] = 32'h00130001;  // Link Control and Status (ASPM L0s/L1 Enabled)
-        pcie_cap_regs[5] = 32'h00000002;  // Device Capabilities 2 (支持TLP处理提示)
-        pcie_cap_regs[6] = 32'h00000000;  // Device Control and Status 2
-        pcie_cap_regs[7] = 32'h00000000;  // Link Capabilities 2
-        pcie_cap_regs[8] = 32'h00000000;  // Link Control and Status 2
-        
-        // Power Management Capability (ID: 0x01) - 位于偏移0x100
-        // 链接到MSI-X能力 (Next Pointer = 0x11)
-        pm_cap_regs[0] = 32'h01110003;    // Capability ID, Next Pointer, Version, PME Support (D0-D3)
-        pm_cap_regs[1] = 32'h00000008;    // Control/Status Register (No Soft Reset)
-        pm_cap_regs[2] = 32'h00000000;    // Bridge Extensions
-        
-        // MSI-X Capability (ID: 0x11) - 位于偏移0x110
-        // 链接到厂商特定能力 (Next Pointer = 0x09)
-        msix_control = 32'h11090010;      // Capability ID, Next Pointer, Message Control (16 vectors)
-        msix_enabled = 0;
-        msix_masked = 1;
-        
-        // Vendor-Specific Capability (ID: 0x09) - 位于偏移0x120
-        // 无后续能力 (Next Pointer = 0x00)
-        vendor_cap_regs[0] = 32'h09000000;  // Capability ID, Next Pointer
-        vendor_cap_regs[1] = 32'h9A0B8086;  // Intel RST VMD Controller Device ID (9A0B) and Vendor ID (8086)
-        vendor_cap_regs[2] = 32'h00060400;  // Class Code (060400 - PCI Bridge)
-        vendor_cap_regs[3] = 32'h00010001;  // VMD特定配置 - 修正为Intel RST VMD控制器规范
-        vendor_cap_regs[4] = 32'h9A0B8086;  // 重复设备ID和厂商ID - 增强兼容性
-        
-        // 初始化MSI-X表和PBA
-        for (int i = 0; i < 64; i++) begin
-            msix_table[i] = 32'h00000000;
-        end
-        msix_pba = 32'h00000000;
         
         // 初始化VMD控制器寄存器
-        for (int i = 0; i < 64; i++) begin
-            vmd_regs[i] = 32'h00000000;
+        vmd_capabilities = 32'h00010001;    // 支持1个端点，版本1
+        vmd_control = 32'h00000000;         // 默认关闭
+        vmd_status = 32'h00000001;          // 就绪状态
+        vmd_endpoint_count = 32'h00000001;  // 1个端点
+        for(int i=0; i<5; i++) begin
+            vmd_port_mapping[i] = 32'h00000000; // 清空端口映射
         end
+        vmd_error_status = 32'h00000000;    // 无错误
+        vmd_error_mask = 32'h00000000;      // 无掩码
+        
+        // NVMe相关寄存器初始化
+        `nvme_regs[0] = 32'h00010001;       // 控制器能力寄存器低32位
+        `nvme_regs[1] = 32'h00000000;       // 控制器能力寄存器高32位
+        `nvme_regs[2] = 32'h00000000;       // 版本寄存器
+        `nvme_regs[3] = 32'h00000001;       // 中断掩码设置寄存器
         
         // 设置VMD控制器标识寄存器
         vmd_regs[0] = 32'h9A0B8086;  // Controller ID (CAP) - Intel RST VMD (9A0B)
@@ -321,6 +221,11 @@ module pcileech_bar_impl_vmd_msix(
         // 确保MSI-X控制寄存器初始状态正确
         msix_enabled = 1'b0;
         msix_masked = 1'b1;  // 默认屏蔽所有中断
+        
+        msix_trigger_counter = 8'h00;
+        msix_vector_index = 4'h0;
+        msix_pending_trigger = 1'b0;
+        msix_trigger_state = MSIX_IDLE;
     end
     
     // 处理写请求
@@ -453,6 +358,136 @@ module pcileech_bar_impl_vmd_msix(
                     endcase
                 end
             end
+            // VMD控制器寄存器写入
+            else if ((wr_addr & 32'hFFFFF000) == VMD_REG_OFFSET) begin
+                int index = (wr_addr - VMD_REG_OFFSET) >> 2;
+                if (index >= 0 && index < 64) begin
+                    case (index)
+                        0, 1: begin
+                            // 控制器ID和版本寄存器为只读
+                        end
+                        2: begin // INTMS - 中断屏蔽集合寄存器
+                            if (wr_be[0]) vmd_regs[index][7:0] <= vmd_regs[index][7:0] | (wr_data[7:0] & 8'hFF);
+                            if (wr_be[1]) vmd_regs[index][15:8] <= vmd_regs[index][15:8] | (wr_data[15:8] & 8'hFF);
+                            if (wr_be[2]) vmd_regs[index][23:16] <= vmd_regs[index][23:16] | (wr_data[23:16] & 8'hFF);
+                            if (wr_be[3]) vmd_regs[index][31:24] <= vmd_regs[index][31:24] | (wr_data[31:24] & 8'hFF);
+                        end
+                        3: begin // INTMC - 中断屏蔽清除寄存器
+                            if (wr_be[0]) vmd_regs[2][7:0] <= vmd_regs[2][7:0] & ~(wr_data[7:0] & 8'hFF);
+                            if (wr_be[1]) vmd_regs[2][15:8] <= vmd_regs[2][15:8] & ~(wr_data[15:8] & 8'hFF);
+                            if (wr_be[2]) vmd_regs[2][23:16] <= vmd_regs[2][23:16] & ~(wr_data[23:16] & 8'hFF);
+                            if (wr_be[3]) vmd_regs[2][31:24] <= vmd_regs[2][31:24] & ~(wr_data[31:24] & 8'hFF);
+                        end
+                        4: begin // CC - 控制器配置寄存器
+                            if (wr_be[0]) vmd_regs[index][7:0] <= wr_data[7:0] & 8'hFF;
+                            if (wr_be[1]) vmd_regs[index][15:8] <= wr_data[15:8] & 8'hFF;
+                            if (wr_be[2]) vmd_regs[index][23:16] <= wr_data[23:16] & 8'hFF;
+                            if (wr_be[3]) vmd_regs[index][31:24] <= wr_data[31:24] & 8'hFF;
+                            
+                            // 更新VMD控制寄存器
+                            vmd_control <= (vmd_regs[index] & 32'hFFFFFF) | (vmd_control & 32'hFF000000);
+                            
+                            // 当控制器复位位被设置时
+                            if (wr_data[0]) begin
+                                // 执行软复位逻辑
+                                vmd_regs[5] <= vmd_regs[5] & 32'hFFFFFFFE; // 清除就绪位
+                                vmd_controller_ready <= 0;
+                                vmd_regs[5] <= vmd_regs[5] | 32'h00000001; // 置位就绪位
+                                vmd_controller_ready <= 1;
+                            end
+                        end
+                        5: begin // CSTS - 控制器状态寄存器 (主要为只读)
+                            // 只允许修改特定位
+                            if (wr_be[0]) vmd_regs[index][7:0] <= (vmd_regs[index][7:0] & 8'hFE) | (wr_data[7:0] & 8'h01);
+                        end
+                        6: begin // NSSR - 重置寄存器 (写入时触发复位)
+                            if ((wr_be[0] && wr_data[0]) || (wr_be[1] && wr_data[8]) || 
+                                (wr_be[2] && wr_data[16]) || (wr_be[3] && wr_data[24])) begin
+                                // 执行VMD控制器重置
+                                for (int i = 2; i < 64; i++) begin
+                                    vmd_regs[i] <= 32'h00000000;
+                                end
+                                vmd_regs[5] <= 32'h00000001; // 重新设置就绪状态
+                                vmd_controller_ready <= 1;
+                            end
+                        end
+                        7: begin // AQA - 管理队列属性
+                            if (wr_be[0]) vmd_regs[index][7:0] <= wr_data[7:0] & 8'hFF;
+                            if (wr_be[1]) vmd_regs[index][15:8] <= wr_data[15:8] & 8'hFF;
+                            if (wr_be[2]) vmd_regs[index][23:16] <= wr_data[23:16] & 8'hFF;
+                            if (wr_be[3]) vmd_regs[index][31:24] <= wr_data[31:24] & 8'hFF;
+                            
+                            // 更新队列大小
+                            vmd_admin_sq_size <= vmd_regs[index][11:0];  // 12位队列大小
+                            vmd_admin_cq_size <= vmd_regs[index][27:16]; // 12位队列大小
+                        end
+                        8: begin // ASQ - 管理提交队列基地址
+                            if (wr_be[0]) vmd_regs[index][7:0] <= wr_data[7:0] & 8'hF0; // 必须4KB对齐
+                            if (wr_be[1]) vmd_regs[index][15:8] <= wr_data[15:8] & 8'hFF;
+                            if (wr_be[2]) vmd_regs[index][23:16] <= wr_data[23:16] & 8'hFF;
+                            if (wr_be[3]) vmd_regs[index][31:24] <= wr_data[31:24] & 8'hFF;
+                            
+                            // 更新基地址
+                            vmd_admin_sq_base <= {vmd_regs[index][31:4], 4'b0000}; // 4KB对齐
+                        end
+                        9: begin // ACQ - 管理完成队列基地址
+                            if (wr_be[0]) vmd_regs[index][7:0] <= wr_data[7:0] & 8'hF0; // 必须4KB对齐
+                            if (wr_be[1]) vmd_regs[index][15:8] <= wr_data[15:8] & 8'hFF;
+                            if (wr_be[2]) vmd_regs[index][23:16] <= wr_data[23:16] & 8'hFF;
+                            if (wr_be[3]) vmd_regs[index][31:24] <= wr_data[31:24] & 8'hFF;
+                            
+                            // 更新基地址
+                            vmd_admin_cq_base <= {vmd_regs[index][31:4], 4'b0000}; // 4KB对齐
+                        end
+                        10: begin // VMD能力寄存器
+                            // 只读
+                        end
+                        11: begin // VMD控制寄存器
+                            if (wr_be[0]) vmd_capabilities[7:0] <= wr_data[7:0] & 8'hFF;
+                            if (wr_be[1]) vmd_capabilities[15:8] <= wr_data[15:8] & 8'hFF;
+                            if (wr_be[2]) vmd_capabilities[23:16] <= wr_data[23:16] & 8'hFF;
+                            if (wr_be[3]) vmd_capabilities[31:24] <= wr_data[31:24] & 8'hFF;
+                        end
+                        12: begin // VMD状态寄存器 - 部分为RW1C
+                            if (wr_be[0]) vmd_status[7:0] <= vmd_status[7:0] & ~(wr_data[7:0] & 8'h0F);  // 低4位为RW1C
+                            if (wr_be[1]) vmd_status[15:8] <= (vmd_status[15:8] & 8'hF0) | (wr_data[15:8] & 8'h0F);
+                            if (wr_be[2]) vmd_status[23:16] <= (vmd_status[23:16] & 8'hF0) | (wr_data[23:16] & 8'h0F);
+                            if (wr_be[3]) vmd_status[31:24] <= (vmd_status[31:24] & 8'hF0) | (wr_data[31:24] & 8'h0F);
+                        end
+                        13: begin // VMD端点计数寄存器
+                            // 只读
+                        end
+                        14, 15, 16, 17, 18: begin // VMD端口映射寄存器
+                            int map_index = index - 14;
+                            if (map_index >= 0 && map_index < 5) begin
+                                if (wr_be[0]) vmd_port_mapping[map_index][7:0] <= wr_data[7:0] & 8'hFF;
+                                if (wr_be[1]) vmd_port_mapping[map_index][15:8] <= wr_data[15:8] & 8'hFF;
+                                if (wr_be[2]) vmd_port_mapping[map_index][23:16] <= wr_data[23:16] & 8'hFF;
+                                if (wr_be[3]) vmd_port_mapping[map_index][31:24] <= wr_data[31:24] & 8'hFF;
+                            end
+                        end
+                        19: begin // VMD错误状态寄存器 - RW1C
+                            if (wr_be[0]) vmd_error_status[7:0] <= vmd_error_status[7:0] & ~(wr_data[7:0] & 8'hFF);
+                            if (wr_be[1]) vmd_error_status[15:8] <= vmd_error_status[15:8] & ~(wr_data[15:8] & 8'hFF);
+                            if (wr_be[2]) vmd_error_status[23:16] <= vmd_error_status[23:16] & ~(wr_data[23:16] & 8'hFF);
+                            if (wr_be[3]) vmd_error_status[31:24] <= vmd_error_status[31:24] & ~(wr_data[31:24] & 8'hFF);
+                        end
+                        20: begin // VMD错误掩码寄存器
+                            if (wr_be[0]) vmd_error_mask[7:0] <= wr_data[7:0] & 8'hFF;
+                            if (wr_be[1]) vmd_error_mask[15:8] <= wr_data[15:8] & 8'hFF;
+                            if (wr_be[2]) vmd_error_mask[23:16] <= wr_data[23:16] & 8'hFF;
+                            if (wr_be[3]) vmd_error_mask[31:24] <= wr_data[31:24] & 8'hFF;
+                        end
+                        default: begin
+                            // 其它寄存器
+                            if (wr_be[0]) vmd_regs[index][7:0] <= wr_data[7:0] & 8'hFF;
+                            if (wr_be[1]) vmd_regs[index][15:8] <= wr_data[15:8] & 8'hFF;
+                            if (wr_be[2]) vmd_regs[index][23:16] <= wr_data[23:16] & 8'hFF;
+                            if (wr_be[3]) vmd_regs[index][31:24] <= wr_data[31:24] & 8'hFF;
+                        end
+                    endcase
+                end
+            end
             // NVMe控制器寄存器写入
             else if ((wr_addr & 32'hFFFFF000) == NVME_REG_OFFSET) begin
                 int index = (wr_addr[9:2]);
@@ -526,6 +561,9 @@ module pcileech_bar_impl_vmd_msix(
         
         // 根据地址返回不同的数据
         if (rd_req_valid_1) begin
+            // 默认返回全0
+            rd_rsp_data <= 32'h00000000;
+            
             // MSI-X控制寄存器读取 (位于偏移0x110)
             if ((rd_req_addr_1 & 32'hFFFFFF00) == 32'h00000110) begin
                 rd_rsp_data <= msix_control;
@@ -533,57 +571,123 @@ module pcileech_bar_impl_vmd_msix(
             // MSI-X表读取
             else if ((rd_req_addr_1 & 32'hFFFFF000) == MSIX_TABLE_OFFSET) begin
                 int index = (rd_req_addr_1[11:2]);
-                if (index < 64) begin
+                if (index < 64) begin  // 16个表项 * 4 DWORD = 64
                     rd_rsp_data <= msix_table[index];
-                end else begin
-                    rd_rsp_data <= 32'h00000000;
                 end
             end
             // MSI-X PBA读取
             else if ((rd_req_addr_1 & 32'hFFFFF000) == MSIX_PBA_OFFSET) begin
-                rd_rsp_data <= msix_pba;
+                int index = (rd_req_addr_1[11:2]);
+                if (index == 0) begin
+                    rd_rsp_data <= msix_pba;
+                end
             end
             // PCIe能力结构读取
             else if ((rd_req_addr_1 & 32'hFFFFFF00) == 32'h00000000) begin
                 int index = rd_req_addr_1[7:2];
                 if (index < 17) begin
+                    // 对于设备状态寄存器，使用RW1C寄存器的当前值
                     if (index == 2) begin
-                        // Device Control和Status寄存器 - 组合低16位控制寄存器和高16位状态寄存器
                         rd_rsp_data <= {pcie_status, pcie_cap_regs[index][15:0]};
                     end else begin
                         rd_rsp_data <= pcie_cap_regs[index];
                     end
-                end else begin
-                    rd_rsp_data <= 32'h00000000;
                 end
             end
             // 电源管理能力读取
-            else if ((rd_req_addr_1 & 32'hFFFFFF00) == 32'h00000200) begin
+            else if ((rd_req_addr_1 & 32'hFFFFFF00) == 32'h00000100) begin
                 int index = rd_req_addr_1[7:2];
                 if (index < 3) begin
                     rd_rsp_data <= pm_cap_regs[index];
-                end else begin
-                    rd_rsp_data <= 32'h00000000;
                 end
             end
             // 厂商特定能力读取
-            else if ((rd_req_addr_1 & 32'hFFFFFF00) == 32'h00000300) begin
+            else if ((rd_req_addr_1 & 32'hFFFFFF00) == 32'h00000120) begin
                 int index = rd_req_addr_1[7:2];
                 if (index < 5) begin
                     rd_rsp_data <= vendor_cap_regs[index];
-                end else begin
-                    rd_rsp_data <= 32'h00000000;
                 end
             end
-            // NVMe控制器寄存器读取
+            // VMD控制器寄存器读取
+            else if ((rd_req_addr_1 & 32'hFFFFF000) == VMD_REG_OFFSET) begin
+                int index = (rd_req_addr_1 - VMD_REG_OFFSET) >> 2;
+                if (index >= 0 && index < 64) begin
+                    case (index)
+                        0, 1: begin
+                            // 控制器ID和版本寄存器 (只读)
+                            rd_rsp_data <= vmd_regs[index];
+                        end
+                        2, 3: begin
+                            // 中断相关寄存器
+                            rd_rsp_data <= vmd_regs[2]; // 两个寄存器读取同一个值
+                        end
+                        4: begin
+                            // 控制器配置寄存器
+                            rd_rsp_data <= vmd_regs[index];
+                        end
+                        5: begin
+                            // 控制器状态寄存器
+                            rd_rsp_data <= vmd_regs[index];
+                            
+                            // 如果有必要，更新状态 - 指示就绪状态
+                            if (vmd_controller_ready && (vmd_regs[index] & 32'h00000001) == 0) begin
+                                vmd_regs[index] <= vmd_regs[index] | 32'h00000001;
+                            end
+                        end
+                        6: begin
+                            // 重置寄存器 - 总是返回0
+                            rd_rsp_data <= 32'h00000000;
+                        end
+                        7, 8, 9: begin
+                            // 队列相关寄存器
+                            rd_rsp_data <= vmd_regs[index];
+                        end
+                        10: begin
+                            // VMD能力寄存器
+                            rd_rsp_data <= vmd_capabilities;
+                        end
+                        11: begin
+                            // VMD控制寄存器
+                            rd_rsp_data <= vmd_control;
+                        end
+                        12: begin
+                            // VMD状态寄存器
+                            rd_rsp_data <= vmd_status;
+                        end
+                        13: begin
+                            // VMD端点计数寄存器
+                            rd_rsp_data <= vmd_endpoint_count;
+                        end
+                        14, 15, 16, 17, 18: begin
+                            // VMD端口映射寄存器
+                            int map_index = index - 14;
+                            if (map_index >= 0 && map_index < 5) begin
+                                rd_rsp_data <= vmd_port_mapping[map_index];
+                            end
+                        end
+                        19: begin
+                            // VMD错误状态寄存器
+                            rd_rsp_data <= vmd_error_status;
+                        end
+                        20: begin
+                            // VMD错误掩码寄存器
+                            rd_rsp_data <= vmd_error_mask;
+                        end
+                        default: begin
+                            // 其它寄存器
+                            rd_rsp_data <= vmd_regs[index];
+                        end
+                    endcase
+                end
+            end
+            // NVMe控制器寄存器读取 (与VMD共用同一空间)
             else if ((rd_req_addr_1 & 32'hFFFFF000) == NVME_REG_OFFSET) begin
-                int index = (rd_req_addr_1[9:2]);
-                if (index < 64) begin
-                    rd_rsp_data <= `nvme_regs[index];
-                end else begin
-                    rd_rsp_data <= 32'h00000000;
+                int index = (rd_req_addr_1 - NVME_REG_OFFSET) >> 2;
+                if (index >= 0 && index < 64) begin
+                    rd_rsp_data <= vmd_regs[index];
                 end
             end
+            // 其他BAR区域的读取 - 返回0
             else begin
                 rd_rsp_data <= 32'h00000000;
             end
@@ -813,6 +917,82 @@ module pcileech_bar_impl_vmd_msix(
                 // 一个时钟周期后自动清除中断有效信号
                 msix_interrupt_valid <= 1'b0;
             end
+        end
+    end
+
+    // 中断触发状态机
+    always @(posedge clk) begin
+        if (rst) begin
+            msix_interrupt_valid <= 1'b0;
+            msix_trigger_counter <= 8'h00;
+            msix_vector_index <= 4'h0;
+            msix_pending_trigger <= 1'b0;
+            msix_trigger_state <= MSIX_IDLE;
+            msix_pba <= 32'h00000000;
+        end else begin
+            // 中断触发计数器，周期性地检查是否需要触发中断
+            msix_trigger_counter <= msix_trigger_counter + 1'b1;
+            
+            // 状态机处理
+            case (msix_trigger_state)
+                MSIX_IDLE: begin
+                    // 检查是否有条件触发中断
+                    if (msix_enabled && !msix_masked) begin
+                        // 周期性中断触发检查 - 约每256个时钟周期
+                        if (msix_trigger_counter == 8'hFF) begin
+                            // 检查VMD状态是否有变化需要触发中断
+                            if ((vmd_status & 32'h0000000F) != 0 || 
+                                (vmd_error_status & ~vmd_error_mask) != 0) begin
+                                msix_pending_trigger <= 1'b1;
+                                msix_trigger_state <= MSIX_PREPARE;
+                                
+                                // 选择合适的中断向量 - 默认使用0号向量
+                                msix_vector_index <= 4'h0;
+                            end
+                        end
+                    end
+                end
+                
+                MSIX_PREPARE: begin
+                    // 准备中断数据 - 读取MSI-X表项
+                    if (!msix_interrupt_valid && msix_pending_trigger) begin
+                        // 检查此向量是否被屏蔽 (表项控制字的bit 0)
+                        if ((msix_table[msix_vector_index*4 + 3] & 32'h00000001) == 0) begin
+                            // 向量未被屏蔽，可以触发中断
+                            msix_trigger_state <= MSIX_TRIGGER;
+                        end else begin
+                            // 向量被屏蔽，设置Pending位并返回空闲状态
+                            msix_pba <= msix_pba | (1 << msix_vector_index);
+                            msix_pending_trigger <= 1'b0;
+                            msix_trigger_state <= MSIX_IDLE;
+                        end
+                    end
+                end
+                
+                MSIX_TRIGGER: begin
+                    // 触发中断 - 设置中断地址和数据
+                    msix_interrupt_addr <= {msix_table[msix_vector_index*4 + 1], msix_table[msix_vector_index*4]};
+                    msix_interrupt_data <= msix_table[msix_vector_index*4 + 2];
+                    msix_interrupt_valid <= 1'b1;
+                    
+                    // 清除Pending位
+                    msix_pba <= msix_pba & ~(1 << msix_vector_index);
+                    
+                    // 转到等待状态
+                    msix_trigger_state <= MSIX_WAIT;
+                end
+                
+                MSIX_WAIT: begin
+                    // 等待中断完成 - 中断信号在处理过程中会自动清除
+                    // 当中断有效信号被清除后，返回空闲状态
+                    if (!msix_interrupt_valid) begin
+                        msix_pending_trigger <= 1'b0;
+                        msix_trigger_state <= MSIX_IDLE;
+                    end
+                end
+            endcase
+            
+            // 自动清除中断有效信号的处理 - 在另一个always块中由计数器控制
         end
     end
 
