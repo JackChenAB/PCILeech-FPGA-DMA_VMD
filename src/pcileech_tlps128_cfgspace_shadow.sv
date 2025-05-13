@@ -390,12 +390,12 @@ module pcileech_tlps128_cfgspace_shadow(
         
         // 硬件事件设置
         .hw_set_en(tlp_err_cor || tlp_err_fatal || tlp_err_ur || tlp_master_abort),
-        .hw_set_data({
-            tlp_err_fatal ? 16'h4000 : 16'h0000 |    // 位14 - Detected Parity Error
-            (tlp_err_cor || tlp_err_fatal) ? 16'h2000 : 16'h0000 |  // 位13 - Signaled System Error
-            tlp_master_abort ? 16'h1000 : 16'h0000 |  // 位12 - Received Master Abort 
-            tlp_err_ur ? 16'h0800 : 16'h0000          // 位11 - Received Target Abort
-        }),
+        .hw_set_data(
+            (tlp_err_fatal ? 16'h4000 : 16'h0000) |    // 位14 - Detected Parity Error
+            ((tlp_err_cor || tlp_err_fatal) ? 16'h2000 : 16'h0000) |  // 位13 - Signaled System Error
+            (tlp_master_abort ? 16'h1000 : 16'h0000) |  // 位12 - Received Master Abort 
+            (tlp_err_ur ? 16'h0800 : 16'h0000)          // 位11 - Received Target Abort
+        ),
         .hw_set_mask(16'h7800),  // 位11-14的掩码
         
         // 读取接口

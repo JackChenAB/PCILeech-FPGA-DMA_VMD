@@ -165,6 +165,11 @@ module pcileech_tlps128_multifunc_controller(
     wire        mem_rd_tlpwr; // 内存读取TLP写标志
     
     assign mem_rd_data = i_pcileech_mem_wrap_multi.rd_data;
+    assign mem_rd_tag = i_pcileech_mem_wrap_multi.rd_tag;
+    assign mem_rd_tp = i_pcileech_mem_wrap_multi.rd_tp;
+    assign mem_rd_reqid = i_pcileech_mem_wrap_multi.rd_reqid;
+    assign mem_rd_tlpwr = i_pcileech_mem_wrap_multi.rd_tlpwr;
+    assign mem_rd_addr = i_pcileech_mem_wrap_multi.rd_addr;
     
     // 计算请求状态位
     wire [2:0] pcie_rx_status = {~pcie_rx_valid, ~pcie_rx_addr_valid | ~pcie_rx_func_valid, 1'b0};
