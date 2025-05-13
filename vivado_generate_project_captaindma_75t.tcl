@@ -1,6 +1,6 @@
 #
-# Vivado generated .tcl for creating the pcileech_75t484_x1 vivado project.
-# Run from within "Vivado Tcl Shell" with command: source vivado_generate_project.tcl -notrace
+# Vivado generated .tcl for creating the pcileech_captaindma_75t vivado project.
+# Run from within "Vivado Tcl Shell" with command: source vivado_generate_project_captaindma_75t.tcl -notrace
 #
 
 # Set the reference directory for source file relative paths (by default the value is script directory path)
@@ -12,7 +12,7 @@ if { [info exists ::origin_dir_loc] } {
 }
 
 # Set the project name
-set _xil_proj_name_ "pcileech_75t484_x1"
+set _xil_proj_name_ "pcileech_captaindma_75t"
 
 # Use project name variable, if specified in the tcl shell
 if { [info exists ::user_project_name] } {
@@ -20,7 +20,7 @@ if { [info exists ::user_project_name] } {
 }
 
 variable script_file
-set script_file "vivado_generate_project.tcl"
+set script_file "vivado_generate_project_captaindma_75t.tcl"
 
 # Help information for this script
 proc print_help {} {
@@ -68,7 +68,7 @@ if { $::argc > 0 } {
 }
 
 # Set the directory path for the original project from where this script was exported
-set orig_proj_dir "[file normalize "$origin_dir/pcileech_75t484_x1"]"
+set orig_proj_dir "[file normalize "$origin_dir/pcileech_captaindma_75t"]"
 
 # Create project
 create_project ${_xil_proj_name_} ./${_xil_proj_name_} -part xc7a75tfgg484-2
@@ -116,15 +116,12 @@ set files [list \
  [file normalize "${origin_dir}/src/pcileech_pcie_tlp_a7.sv"]\
  [file normalize "${origin_dir}/src/pcileech_tlps128_bar_controller.sv"]\
  [file normalize "${origin_dir}/src/pcileech_tlps128_cfgspace_shadow.sv"]\
- [file normalize "${origin_dir}/src/pcileech_75t484_x1_top.sv"]\
+ [file normalize "${origin_dir}/src/pcileech_75t484_x1_vmd_top.sv"]\
  [file normalize "${origin_dir}/src/pcileech_rw1c_register.sv"]\
  [file normalize "${origin_dir}/src/pcileech_pcie_tlps128_status.sv"]\
  [file normalize "${origin_dir}/src/pcileech_tlps128_monitor.sv"]\
 ]
 set imported_files [import_files -fileset sources_1 $files]
-
-# Set 'sources_1' fileset file properties for remote files
-# None
 
 # Set 'sources_1' fileset file properties for local files
 set file "src/pcileech_header.svh"
@@ -167,7 +164,7 @@ set file "src/pcileech_tlps128_cfgspace_shadow.sv"
 set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
 set_property -name "file_type" -value "SystemVerilog" -objects $file_obj
 
-set file "src/pcileech_75t484_x1_top.sv"
+set file "src/pcileech_75t484_x1_vmd_top.sv"
 set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
 set_property -name "file_type" -value "SystemVerilog" -objects $file_obj
 
@@ -185,7 +182,7 @@ set_property -name "file_type" -value "SystemVerilog" -objects $file_obj
 
 # Set 'sources_1' fileset properties
 set obj [get_filesets sources_1]
-set_property -name "top" -value "pcileech_75t484_x1_top" -objects $obj
+set_property -name "top" -value "pcileech_75t484_x1_vmd_top" -objects $obj
 set_property -name "top_auto_set" -value "0" -objects $obj
 
 
@@ -600,7 +597,7 @@ set obj [get_filesets sim_1]
 
 # Set 'sim_1' fileset properties
 set obj [get_filesets sim_1]
-set_property -name "top" -value "pcileech_75t484_x1_top" -objects $obj
+set_property -name "top" -value "pcileech_75t484_x1_vmd_top" -objects $obj
 set_property -name "top_auto_set" -value "0" -objects $obj
 
 # Upgrade IP from the currently installed Vivado version

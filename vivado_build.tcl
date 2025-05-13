@@ -1,27 +1,31 @@
 #
 # RUN FROM WITHIN "Vivado Tcl Shell" WITH COMMAND:
 # source vivado_build.tcl -notrace
-# TODO: 需要修改为自动生成项目名称
 #
+# 自动获取当前项目名称
+set _xil_proj_name_ "pcileech_captaindma_75t"
+
 puts "-------------------------------------------------------"
-puts " STARTING SYNTHESIS STEP.                              "
+puts " 开始为 ${_xil_proj_name_} 项目执行综合步骤            "
 puts "-------------------------------------------------------"
 launch_runs -jobs 4 synth_1
 puts "-------------------------------------------------------"
-puts " WAITING FOR SYNTHESIS STEP TO FINISH ...              "
-puts " THIS IS LIKELY TO TAKE A VERY LONG TIME.              "
+puts " 等待综合步骤完成 ...                                  "
+puts " 这可能需要很长时间。                                  "
 puts "-------------------------------------------------------"
 wait_on_run synth_1
 puts "-------------------------------------------------------"
-puts " STARTING IMPLEMENTATION STEP.                         "
+puts " 开始实现步骤                                          "
 puts "-------------------------------------------------------"
 launch_runs -jobs 4 impl_1 -to_step write_bitstream
 puts "-------------------------------------------------------"
-puts " WAITING FOR IMPLEMENTATION STEP TO FINISH ...         "
-puts " THIS IS LIKELY TO TAKE A VERY LONG TIME.              "
+puts " 等待实现步骤完成 ...                                  "
+puts " 这可能需要很长时间。                                  "
 puts "-------------------------------------------------------"
 wait_on_run impl_1
-file copy -force ./pcileech_75t484_x1/pcileech_75t484_x1.runs/impl_1/pcileech_75t484_x1_top.bin pcileech_75t484_x1.bin
+
+# 生成的比特流文件基于当前项目名称和顶层模块自动命名
+file copy -force ./${_xil_proj_name_}/${_xil_proj_name_}.runs/impl_1/pcileech_75t484_x1_vmd_top.bin ${_xil_proj_name_}.bin
 puts "-------------------------------------------------------"
-puts " BUILD HOPEFULLY COMPLETED.                            "
+puts " 构建完成。                                            "
 puts "-------------------------------------------------------"
