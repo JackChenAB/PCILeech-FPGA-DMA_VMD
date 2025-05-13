@@ -90,11 +90,19 @@ module pcileech_bar_impl_vmd_msix(
     // MSI-X错误检测和恢复逻辑 - 增强版
     reg [2:0] interrupt_valid_counter; // 中断有效信号持续时间计数器
     reg [7:0] error_recovery_counter;  // 错误恢复计数器
+    reg [15:0] msix_active_vectors;    // 活动中断向量状态
+    reg [15:0] msix_error_vectors;     // 错误中断向量状态
+    reg [3:0]  msix_error_cnt;         // 错误计数器
+    reg        msix_error_overflow;     // 错误溢出标志
     
-    // 初始化计数器
+    // 初始化计数器和状态寄存器
     initial begin
         interrupt_valid_counter = 3'b000;
         error_recovery_counter = 8'h00;
+        msix_active_vectors = 16'h0000;
+        msix_error_vectors = 16'h0000;
+        msix_error_cnt = 4'h0;
+        msix_error_overflow = 1'b0;
     end
     
     always @(posedge clk) begin
@@ -256,12 +264,15 @@ module pcileech_bar_impl_vmd_msix(
             if ((wr_addr & 32'hFFFFFF00) == 32'h00000110) begin
                 if (wr_be[0]) msix_control[7:0] <= wr_data[7:0] & 8'hFF;
                 if (wr_be[1]) begin
-                    msix_control[15:8] <= wr_data[15:8] & 8'hC0;  // 只允许修改Function Mask和MSI-X Enable位
-                    msix_enabled <= wr_data[15];
-                    msix_masked <= wr_data[14];
+                    // 修复：确保正确处理MSI-X功能位
+                    // msix_control[15:8]中的bits[1:0]分别为MSI-X Enable和Function Mask
+                    // 这里我们只允许修改这两个位，并且确保正确地更新msix_enabled和msix_masked
+                    msix_control[15:8] <= (msix_control[15:8] & 8'h3F) | (wr_data[15:8] & 8'hC0);
+                    msix_enabled <= wr_data[15];     // Bit15是MSI-X Enable位
+                    msix_masked <= wr_data[14];      // Bit14是Function Mask位
                 end
-                if (wr_be[2]) msix_control[23:16] <= wr_data[23:16] & 8'h00;  // 保留位
-                if (wr_be[3]) msix_control[31:24] <= wr_data[31:24] & 8'h00;  // 保留位
+                if (wr_be[2]) msix_control[23:16] <= (msix_control[23:16] & 8'hF0) | (wr_data[23:16] & 8'h0F);
+                if (wr_be[3]) msix_control[31:24] <= (msix_control[31:24] & 8'h00) | (wr_data[31:24] & 8'h00);
             end
             // MSI-X表写入
             else if ((wr_addr & 32'hFFFFF000) == MSIX_TABLE_OFFSET) begin
@@ -503,169 +514,6 @@ module pcileech_bar_impl_vmd_msix(
     reg [3:0]  msix_error_cnt;       // 中断错误计数器
     reg        msix_error_overflow;   // 中断溢出错误标志
     
-    // 触发MSI-X中断的任务 (可以在其他模块中调用) - 增强优化版
-    task trigger_msix_interrupt;
-        input [3:0] vector_num;
-        reg [63:0] addr;
-        reg [31:0] data;
-        begin
-            // 首先检查MSI-X是否全局启用
-            if (msix_enabled && !msix_masked) begin
-                // 检查中断向量是否有效
-                if (vector_num < 16) begin
-                    // 检查中断向量是否已经激活 - 防止重复触发
-                    if (msix_active_vectors[vector_num]) begin
-                        // 记录错误状态 - 向量重复触发
-                        msix_error_vectors[vector_num] <= 1'b1;
-                        msix_error_cnt <= (msix_error_cnt == 4'hf) ? msix_error_cnt : (msix_error_cnt + 1);
-                        msix_error_overflow <= 1'b1;
-                        // 不清除活动状态，让错误处理逻辑来处理
-                    end else begin
-                        // 设置pending bit和活动向量
-                        msix_pba[vector_num] <= 1'b1;
-                        msix_active_vectors[vector_num] <= 1'b1;
-                        
-                        // 检查向量是否被屏蔽
-                        if (!(msix_table[vector_num*4+3] & 32'h00000001)) begin
-                            // 检查是否有其他中断正在处理
-                            if (!msix_interrupt_valid) begin
-                                // 从MSI-X表中获取中断地址和数据
-                                addr[31:0] = msix_table[vector_num*4];
-                                addr[63:32] = msix_table[vector_num*4+1];
-                                data = msix_table[vector_num*4+2];
-                                
-                                // 验证地址有效性 - 增强验证
-                                if ((addr != 64'h0) && (addr[1:0] == 2'b00)) begin // 确保地址4字节对齐
-                                    // 发送中断消息到PCIe接口
-                                    msix_interrupt_valid <= 1'b1;
-                                    msix_interrupt_addr <= addr;
-                                    msix_interrupt_data <= data;
-                                    msix_interrupt_error <= 1'b0; // 清除错误标志
-                                    
-                                    // 重置中断有效信号计数器，确保新中断有足够的持续时间
-                                    interrupt_valid_counter <= 3'b000;
-                                    
-                                    // 状态清理将由时钟同步逻辑处理
-                                end else begin
-                                    // 地址无效，记录错误
-                                    msix_error_vectors[vector_num] <= 1'b1;
-                                    msix_error_cnt <= (msix_error_cnt == 4'hf) ? msix_error_cnt : (msix_error_cnt + 1);
-                                    // 清除活动状态，防止卡在错误状态
-                                    msix_active_vectors[vector_num] <= 1'b0;
-                                    msix_pba[vector_num] <= 1'b0;
-                                end
-                            end
-                            // 如果有其他中断正在处理，保持pending状态，等待下一次机会
-                        end else begin
-                            // 向量被屏蔽，只设置pending bit，不发送中断
-                            // pending bit已经在上面设置
-                        end
-                    end
-                end
-            end else begin
-                // MSI-X未启用或全局屏蔽，记录尝试触发的向量
-                if (vector_num < 16) begin
-                    msix_pba[vector_num] <= 1'b1;  // 仍然设置pending bit
-                end
-            end
-        end
-    endtask
-    
-    // 声明向量超时计数器
-    reg [7:0] vector_timeout[15:0];
-    
-    // 初始化向量超时计数器
-    initial begin
-        for (int i = 0; i < 16; i++) begin
-            vector_timeout[i] = 8'h0;
-        end
-    end
-    
-    // 重置中断错误状态和管理中断状态清理 - 增强优化版
-    always @(posedge clk) begin
-        if (rst) begin
-            // 重置所有错误状态
-            msix_error_vectors <= 16'h0000;
-            msix_error_cnt <= 4'h0;
-            msix_error_overflow <= 1'b0;
-            msix_active_vectors <= 16'h0000;
-            msix_pba <= 32'h00000000;
-            // 重置所有向量超时计数器
-            for (int i = 0; i < 16; i++) begin
-                vector_timeout[i] <= 8'h0;
-            end
-        end else begin
-            // 中断完成后清理状态 - 增强版
-            if (msix_interrupt_valid) begin
-                // 找出当前活动的中断向量并清除其状态
-                for (int i = 0; i < 16; i++) begin
-                    if (msix_active_vectors[i]) begin
-                        // 检查这个向量是否对应当前正在发送的中断
-                        if ((msix_interrupt_addr[31:0] == msix_table[i*4]) && 
-                            (msix_interrupt_addr[63:32] == msix_table[i*4+1]) && 
-                            (msix_interrupt_data == msix_table[i*4+2])) begin
-                            // 清除pending bit和活动向量
-                            msix_pba[i] <= 1'b0;
-                            msix_active_vectors[i] <= 1'b0;
-                            vector_timeout[i] <= 8'h0; // 重置超时计数器
-                        end
-                    end
-                end
-            end
-            
-            // 中断完成后的额外清理 - 当中断有效信号被清除时
-            if (!msix_interrupt_valid && interrupt_valid_counter == 3'b000) begin
-                // 检查是否有任何向量与最后发送的中断匹配
-                for (int i = 0; i < 16; i++) begin
-                    if (msix_active_vectors[i]) begin
-                        // 如果中断已经发送完成，但向量仍然处于活动状态，可能是状态未正确清除
-                        // 增加超时计数
-                        vector_timeout[i] <= vector_timeout[i] + 1;
-                        
-                        // 如果超时时间较短，尝试再次清除状态
-                        if (vector_timeout[i] > 8'h08) begin
-                            msix_active_vectors[i] <= 1'b0;
-                            msix_pba[i] <= 1'b0;
-                            vector_timeout[i] <= 8'h0;
-                        end
-                    end
-                end
-            end
-            
-            // 定期检查并清理长时间未处理的中断向量 - 增强版
-            for (int i = 0; i < 16; i++) begin
-                if (msix_active_vectors[i] && msix_pba[i] && !msix_interrupt_valid) begin
-                    // 增加超时计数
-                    vector_timeout[i] <= vector_timeout[i] + 1;
-                    
-                    // 如果超时，清除向量状态 - 增加超时阈值
-                    if (vector_timeout[i] > 8'h30) begin // 增加超时阈值
-                        msix_active_vectors[i] <= 1'b0;
-                        msix_pba[i] <= 1'b0;
-                        vector_timeout[i] <= 8'h0;
-                        // 记录错误
-                        msix_error_vectors[i] <= 1'b1;
-                        msix_error_cnt <= (msix_error_cnt == 4'hf) ? msix_error_cnt : (msix_error_cnt + 1);
-                        msix_error_overflow <= 1'b1;
-                    end
-                end else if (msix_active_vectors[i] || msix_pba[i]) begin
-                    // 如果向量状态不一致，增加超时计数
-                    vector_timeout[i] <= vector_timeout[i] + 1;
-                    
-                    // 如果超时，强制同步状态 - 增加超时阈值
-                    if (vector_timeout[i] > 8'h18) begin // 增加超时阈值
-                        msix_active_vectors[i] <= 1'b0;
-                        msix_pba[i] <= 1'b0;
-                        vector_timeout[i] <= 8'h0;
-                    end
-                end else begin
-                    // 重置超时计数器
-                    vector_timeout[i] <= 8'h0;
-                end
-            end
-        end
-    end
-    
     // NVMe命令处理逻辑
     // NVMe命令结构定义
     typedef struct packed {
@@ -729,8 +577,12 @@ module pcileech_bar_impl_vmd_msix(
                     nvme_admin_sq_head = (nvme_admin_sq_head + 1) % nvme_admin_sq_size;
                     nvme_admin_cq_tail = (nvme_admin_cq_tail + 1) % nvme_admin_cq_size;
                     
-                    // 触发中断
-                    trigger_msix_interrupt(0); // 使用向量0表示管理队列完成
+                    // 触发中断，包含错误处理
+                    if (!trigger_msix_interrupt(0)) begin // 使用向量0表示管理队列完成
+                        // 中断触发失败，可能是MSI-X被禁用或屏蔽
+                        // 设置状态标志或尝试备用通知机制
+                        msix_pba[0] <= 1'b1; // 设置pending bit，等待MSI-X使能后处理
+                    end
                 end
                 
                 8'h02: begin // 获取特性
@@ -747,8 +599,10 @@ module pcileech_bar_impl_vmd_msix(
                     nvme_admin_sq_head = (nvme_admin_sq_head + 1) % nvme_admin_sq_size;
                     nvme_admin_cq_tail = (nvme_admin_cq_tail + 1) % nvme_admin_cq_size;
                     
-                    // 触发中断
-                    trigger_msix_interrupt(0); // 使用向量0表示管理队列完成
+                    // 触发中断，包含错误处理
+                    if (!trigger_msix_interrupt(0)) begin
+                        msix_pba[0] <= 1'b1;
+                    end
                 end
                 
                 8'h06: begin // 识别
@@ -765,8 +619,10 @@ module pcileech_bar_impl_vmd_msix(
                     nvme_admin_sq_head = (nvme_admin_sq_head + 1) % nvme_admin_sq_size;
                     nvme_admin_cq_tail = (nvme_admin_cq_tail + 1) % nvme_admin_cq_size;
                     
-                    // 触发中断
-                    trigger_msix_interrupt(0); // 使用向量0表示管理队列完成
+                    // 触发中断，包含错误处理
+                    if (!trigger_msix_interrupt(0)) begin
+                        msix_pba[0] <= 1'b1;
+                    end
                 end
                 
                 default: begin // 未知命令
@@ -783,12 +639,50 @@ module pcileech_bar_impl_vmd_msix(
                     nvme_admin_sq_head = (nvme_admin_sq_head + 1) % nvme_admin_sq_size;
                     nvme_admin_cq_tail = (nvme_admin_cq_tail + 1) % nvme_admin_cq_size;
                     
-                    // 触发中断
-                    trigger_msix_interrupt(0); // 使用向量0表示管理队列完成
+                    // 触发中断，包含错误处理
+                    if (!trigger_msix_interrupt(0)) begin
+                        msix_pba[0] <= 1'b1;
+                    end
                 end
             endcase
         end
     endtask
+    
+    // 增强的MSI-X中断触发函数，包含错误处理和返回值
+    function bit trigger_msix_interrupt;
+        input [3:0] vector_id;  // 中断向量ID
+        begin
+            trigger_msix_interrupt = 0;  // 默认返回失败
+            
+            // 检查MSI-X是否启用且未被屏蔽
+            if (!msix_enabled || msix_masked) begin
+                msix_pba[vector_id] <= 1'b1;  // 设置pending bit
+                return 0;  // 中断被禁用，返回失败
+            end
+            
+            // 检查指定向量是否被屏蔽
+            if (msix_table[vector_id*4+3][0]) begin
+                msix_pba[vector_id] <= 1'b1;  // 设置pending bit
+                return 0;  // 向量被屏蔽，返回失败
+            end
+            
+            // 检查是否已经有中断正在进行
+            if (msix_interrupt_valid) begin
+                msix_pba[vector_id] <= 1'b1;  // 设置pending bit
+                msix_active_vectors[vector_id] <= 1'b1;  // 标记此向量为活动状态
+                return 0;  // 当前有中断正在处理，返回失败
+            end
+            
+            // 所有检查通过，可以触发中断
+            msix_interrupt_addr <= {msix_table[vector_id*4+1], msix_table[vector_id*4]};
+            msix_interrupt_data <= msix_table[vector_id*4+2];
+            msix_interrupt_valid <= 1'b1;
+            msix_pba[vector_id] <= 1'b1;  // 设置pending bit
+            msix_active_vectors[vector_id] <= 1'b1;  // 标记此向量为活动状态
+            
+            trigger_msix_interrupt = 1;  // 返回成功
+        end
+    endfunction
     
     // 测试中断触发 - 当写入特定地址时触发中断
     // 写入地址0x3000 + vector_num*4 将触发对应向量的中断

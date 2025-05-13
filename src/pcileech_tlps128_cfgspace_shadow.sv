@@ -177,10 +177,13 @@ module pcileech_tlps128_cfgspace_shadow(
             state_timeout_detected <= 1'b0;
             error_recovery_counter <= 8'h00;
         end else begin
-            // 状态机超时检测逻辑
+            // 状态机超时检测逻辑 - 增强版，防止计数器溢出
             if (bram_rd_tp != `S_SHADOW_CFGSPACE_IDLE) begin
-                state_timeout_counter <= state_timeout_counter + 1'b1;
-                if (state_timeout_counter >= 16'hFFFF) begin
+                if (state_timeout_counter < 16'hFFF0) begin  // 防止溢出
+                    state_timeout_counter <= state_timeout_counter + 1'b1;
+                end
+                // 超时阈值调整为更合理的值
+                if (state_timeout_counter >= 16'h1FF0) begin
                     state_timeout_detected <= 1'b1;
                 end
             end else begin
@@ -203,10 +206,14 @@ module pcileech_tlps128_cfgspace_shadow(
                     if (error_recovery_counter >= 8'h10) begin
                         bram_rd_tp <= `S_SHADOW_CFGSPACE_IDLE;
                         error_recovery_counter <= 8'h00;
+                        // 重置超时标志和计数器
+                        state_timeout_counter <= 16'h0000;
+                        state_timeout_detected <= 1'b0;
                     end
                 end
                 default: begin
-                    // Do nothing
+                    // 安全处理：意外状态时恢复到IDLE
+                    bram_rd_tp <= `S_SHADOW_CFGSPACE_IDLE;
                 end
             endcase
         end
@@ -256,6 +263,7 @@ module pcileech_tlps128_cfgspace_shadow(
         .rst            ( rst                       ),  // <-
         .clk_pcie       ( clk_pcie                  ),  // <-
         .pcie_id        ( pcie_id                   ),  // <- [15:0]
+        .pcie_rx_status ( pcie_rx_status            ), // <- [2:0]
         .tlps_cfg_rsp   ( tlps_cfg_rsp              ),
         // cfgspace:
         .cfg_wren       ( bram_rd_valid && !pcie_cfg_timeout ), // <-
@@ -357,6 +365,7 @@ module pcileech_cfgspace_pcie_tx(
     input                   rst,
     input                   clk_pcie,
     input   [15:0]          pcie_id,        // PCIe id of this core
+    input   [2:0]           pcie_rx_status, // PCIe状态位，从父模块传递
     IfAXIS128.source        tlps_cfg_rsp,
     // cfgspace:
     input                   cfg_wren,

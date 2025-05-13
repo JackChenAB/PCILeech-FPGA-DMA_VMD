@@ -95,8 +95,11 @@ module pcileech_ft601(
             FT601_DATA_OUT[4]   <= 32'h66665555;
         end
         else begin
+            // Add boundary protection for data_queue_count
             data_cooldown_count <= (data_queue_count == 0) ? (data_cooldown_count + 1) : 0;
-            data_queue_count    <= data_queue_count + (din_wr_en ? 3'b001 : 3'b000) - (FWD ? 3'b001 : 3'b000);
+            data_queue_count    <= (data_queue_count == 0 && !din_wr_en) ? 3'b000 :
+                                  (data_queue_count == 3'b111 && din_wr_en && !FWD) ? 3'b111 :
+                                  data_queue_count + (din_wr_en ? 3'b001 : 3'b000) - (FWD ? 3'b001 : 3'b000);
             if ( FWD ) begin
                 if ( data_queue_count > 1 ) begin
                     FT601_DATA_OUT[0] <= FT601_DATA_OUT[1];
@@ -135,6 +138,12 @@ module pcileech_ft601(
         if ( rst )
             begin
                 state <= `S_FT601_IDLE;
+            end
+        else if ( FT601_RXF_N && FT601_TXE_N && state != `S_FT601_IDLE && 
+                  state != `S_FT601_RX_COOLDOWN1 && state != `S_FT601_RX_COOLDOWN2 && 
+                  state != `S_FT601_TX_COOLDOWN1 && state != `S_FT601_TX_COOLDOWN2 )
+            begin
+                state <= `S_FT601_IDLE;  // Force return to IDLE if both RX/TX are inactive
             end
         else case ( state )
             // ----------------------------------------------------------------

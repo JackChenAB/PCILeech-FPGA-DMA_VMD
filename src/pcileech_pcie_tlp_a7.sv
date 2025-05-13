@@ -69,18 +69,11 @@ module pcileech_pcie_tlp_a7(
     
     // 将回响的TLP包连接到现有的多路复用器
     IfAXIS128 tlps_tx_static();
-    // 确保tlps_tx_static的输出能正确连接到tlps_static
-    assign tlps_static.has_data = tlps_tx_static.has_data || tlps_echo_full.has_data;
-    assign tlps_static.tdata = tlps_tx_static.tdata;
-    assign tlps_static.tkeepdw = tlps_tx_static.tkeepdw;
-    assign tlps_static.tlast = tlps_tx_static.tlast;
-    assign tlps_static.tuser = tlps_tx_static.tuser;
-    assign tlps_static.tvalid = tlps_tx_static.tvalid;
-    assign tlps_tx_static.tready = tlps_static.tready;
     
-    // 当回响功能启用时，将回响的TLP包优先发送到PCIe接口
     // 创建一个完整的AXIS接口，用于连接回响输出到多路复用器
     IfAXIS128 tlps_echo_full();
+    
+    // 正确地将TLP回响信号连接到完整接口
     assign tlps_echo_full.tdata = tlps_echo.tdata;
     assign tlps_echo_full.tkeepdw = tlps_echo.tkeepdw;
     assign tlps_echo_full.tvalid = tlps_echo.tvalid;
@@ -88,6 +81,8 @@ module pcileech_pcie_tlp_a7(
     assign tlps_echo_full.tlast = tlps_echo.tlast;
     assign tlps_echo_full.has_data = tlps_echo.tvalid;
     
+    // 多路选择器：根据优先级选择TLP数据源
+    // 先使用一个静态多路复用器处理回响和配置响应
     pcileech_tlps128_sink_mux1 i_pcileech_tlps128_sink_static_mux(
         .rst            ( rst                           ),
         .clk_pcie       ( clk_pcie                      ),
@@ -96,6 +91,15 @@ module pcileech_pcie_tlp_a7(
         .tlps_in2       ( tlps_cfg_rsp.sink             ),
         .tlps_in3       ( tlps_cfg_rsp.sink             )  // 占位，实际未使用
     );
+    
+    // 最终多路选择器：将所有可能的TLP源连接到输出
+    assign tlps_static.has_data = tlps_tx_static.has_data;
+    assign tlps_static.tdata = tlps_tx_static.tdata;
+    assign tlps_static.tkeepdw = tlps_tx_static.tkeepdw;
+    assign tlps_static.tlast = tlps_tx_static.tlast;
+    assign tlps_static.tuser = tlps_tx_static.tuser;
+    assign tlps_static.tvalid = tlps_tx_static.tvalid;
+    assign tlps_tx_static.tready = tlps_static.tready;
     
     pcileech_tlps128_dst_fifo i_pcileech_tlps128_dst_fifo(
         .rst            ( rst                           ),
@@ -254,7 +258,7 @@ module pcileech_tlps128_filter(
     assign tlps_echo_out.tuser   = tlps_in.tuser;
     assign tlps_echo_out.tlast   = tlps_in.tlast;
     
-    // 隐身模式扫描检测逻辑
+    // 隐身模式扫描检测逻辑 - 增强版
     always @ ( posedge clk_pcie ) begin
         if (rst) begin
             stealth_counter <= 0;
@@ -264,30 +268,70 @@ module pcileech_tlps128_filter(
         end
         else if (stealth_mode && tlps_in.tvalid && first) begin
             // 计数器递增，用于周期性激活隐身模式
-            stealth_counter <= stealth_counter + 1;
+            stealth_counter <= stealth_counter + 1'b1;
             
             // 检测连续的内存读取操作（可能是扫描）
             if (is_tlphdr_memrd) begin
                 // 提取当前内存读取的地址
-                wire [31:0] curr_addr = tlps_in.tdata[95:64]; // 假设地址在这个位置
+                wire [31:0] curr_addr = tlps_in.tdata[95:64]; // 内存读取地址
                 
-                // 检测连续或接近的地址访问
-                if (curr_addr > last_addr && curr_addr - last_addr < 32'h100) begin
-                    // 可能是扫描，增加扫描检测状态
-                    if (scan_detect_state < 2'b11)
-                        scan_detect_state <= scan_detect_state + 1;
-                    else
-                        stealth_active <= 1; // 激活完全隐身模式
-                end
-                else if (curr_addr < last_addr || curr_addr - last_addr > 32'h1000) begin
-                    // 非连续访问，减少扫描检测状态
-                    if (scan_detect_state > 0)
-                        scan_detect_state <= scan_detect_state - 1;
-                    else if (stealth_counter[10]) // 周期性重置隐身模式
-                        stealth_active <= 0;
+                // 改进的扫描检测逻辑 - 更关注地址空间中的模式和频率
+                if (last_addr != 0) begin
+                    // 检测连续或接近的地址访问
+                    if (curr_addr > last_addr && (curr_addr - last_addr) <= 32'h1000) begin
+                        // 渐进式阈值判断
+                        if ((curr_addr - last_addr) < 32'h20) begin
+                            // 非常接近的地址访问 - 这很可能是扫描
+                            if (scan_detect_state < 2'b11)
+                                scan_detect_state <= scan_detect_state + 1'b1;
+                            else
+                                stealth_active <= 1'b1; // 激活完全隐身模式
+                        end
+                        else if ((curr_addr - last_addr) < 32'h100) begin
+                            // 比较接近的地址访问 - 可能是扫描，但不太确定
+                            if (scan_detect_state < 2'b10)
+                                scan_detect_state <= scan_detect_state + 1'b1;
+                        end
+                        else begin
+                            // 中等距离的地址访问 - 不太可能是恶意扫描
+                            if (scan_detect_state > 0)
+                                scan_detect_state <= scan_detect_state - 1'b1;
+                        end
+                    end
+                    else if (last_addr > curr_addr && (last_addr - curr_addr) <= 32'h1000) begin
+                        // 反向扫描检测 - 也考虑从高到低的扫描
+                        if ((last_addr - curr_addr) < 32'h20) begin
+                            if (scan_detect_state < 2'b11)
+                                scan_detect_state <= scan_detect_state + 1'b1;
+                            else
+                                stealth_active <= 1'b1;
+                        end
+                        else if ((last_addr - curr_addr) < 32'h100) begin
+                            if (scan_detect_state < 2'b10)
+                                scan_detect_state <= scan_detect_state + 1'b1;
+                        end
+                        else begin
+                            if (scan_detect_state > 0)
+                                scan_detect_state <= scan_detect_state - 1'b1;
+                        end
+                    end
+                    else begin
+                        // 远距离跳转 - 不像是扫描
+                        if (scan_detect_state > 0)
+                            scan_detect_state <= scan_detect_state - 1'b1;
+                        else if (stealth_counter[10] && stealth_active) // 周期性尝试解除隐身模式
+                            stealth_active <= 1'b0;
+                    end
                 end
                 
                 last_addr <= curr_addr;
+            end
+            else if (is_tlphdr_memwr && stealth_counter[8] && scan_detect_state > 0) begin
+                // 内存写入操作不太可能是扫描的一部分
+                // 定期降低扫描检测状态
+                scan_detect_state <= scan_detect_state - 1'b1;
+                if (scan_detect_state == 2'b01 && stealth_active)
+                    stealth_active <= 1'b0;
             end
         end
     end

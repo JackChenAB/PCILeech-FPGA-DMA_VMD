@@ -49,6 +49,26 @@ module pcileech_bar_impl_zerowrite4k(
     reg [7:0]   access_counter;
     reg         stealth_mode_active;
     reg [31:0]  dynamic_response_value;
+    reg         counter_overflow_flag;     // 计数器溢出标志
+    reg [31:0]  counter_recovery_timer;   // 计数器恢复定时器
+    
+    // BRAM接口信号
+    reg [9:0]   bram_addr_a;      // BRAM端口A地址
+    reg [9:0]   bram_addr_b;      // BRAM端口B地址
+    reg [31:0]  bram_din_a;       // BRAM端口A写入数据
+    reg         bram_en_a;        // BRAM端口A使能
+    reg [3:0]   bram_we_a;        // BRAM端口A写使能
+    reg         bram_en_b;        // BRAM端口B使能
+    
+    // 计数器保护和溢出检测
+    reg [15:0]  access_timeout;    // 访问超时计数器
+    reg         counter_overflow;  // 计数器溢出标志
+    reg [3:0]   error_status;     // 错误状态寄存器
+    
+    // 防抖动和时序保护
+    reg [3:0]   debounce_counter; // 防抖动计数器
+    reg         stable_access;    // 稳定访问标志
+    reg [7:0]   timing_guard;     // 时序保护计数器
     
     // 关键区域定义 - 这些区域的写入将被实际存储
     localparam CRITICAL_REGION_START = 32'h00000000;
@@ -60,21 +80,22 @@ module pcileech_bar_impl_zerowrite4k(
     // 高级访问模式检测 - 用于识别可能的驱动扫描
     reg [31:0] last_access_addr;
     reg [31:0] access_pattern[15:0];  // 扩展模式记录数组 - 增加到16个元素以捕获更长的模式
-    reg [3:0]  pattern_index;         // 增加位宽以匹配扩展的数组大小
+    reg [4:0]  pattern_index;         // 增加位宽以防止溢出(0-15)
     reg        sequential_access_detected;
     reg        scan_pattern_detected;
-    reg        stride_pattern_detected;  // 新增：检测固定步长访问模式
-    reg        random_probe_detected;    // 新增：检测随机探测模式
+    reg        stride_pattern_detected;  // 检测固定步长访问模式
+    reg        random_probe_detected;    // 检测随机探测模式
     reg [3:0]  consecutive_reads;
     reg [15:0] read_interval_timer;
-    reg [3:0]  detection_confidence;     // 增加检测置信度位宽
-    reg [31:0] pattern_frequency[4:0];   // 新增：记录常见访问模式的频率
-    reg [31:0] pattern_stride;           // 新增：记录检测到的步长
-    reg [7:0]  access_timing[7:0];       // 新增：记录访问时间间隔模式
-    reg [2:0]  timing_index;             // 新增：时间模式索引
-    reg [7:0]  timing_variance;          // 新增：时间间隔方差估计
-    reg [31:0] last_access_time;         // 新增：上次访问时间戳
-    reg [31:0] current_time;             // 新增：当前时间计数器
+    reg [4:0]  detection_confidence;     // 增加检测置信度位宽和范围(0-31)
+    reg [31:0] pattern_frequency[4:0];   // 记录常见访问模式的频率
+    reg [31:0] pattern_stride;           // 记录检测到的步长
+    reg [7:0]  access_timing[7:0];       // 记录访问时间间隔模式
+    reg [3:0]  timing_index;             // 增加位宽以防止溢出(0-7)
+    reg [7:0]  timing_variance;          // 时间间隔方差估计
+    reg [31:0] last_access_time;         // 上次访问时间戳
+    reg [31:0] current_time;             // 当前时间计数器
+    reg [7:0]  debounce_counter;         // 设备类型切换防抖计数器
     
     // 增强的动态响应策略状态
     typedef enum {
@@ -101,8 +122,9 @@ module pcileech_bar_impl_zerowrite4k(
     device_type_t current_device_type; // 当前模拟的设备类型
     reg [31:0] device_signatures[4:0]; // 设备特征签名
     
-    // 初始化
+    // 初始化和复位逻辑
     initial begin
+        // 基本状态初始化
         access_counter = 8'h00;
         stealth_mode_active = 1'b1; // 默认启用隐身模式
         sequential_access_detected = 1'b0;
@@ -125,6 +147,27 @@ module pcileech_bar_impl_zerowrite4k(
         pattern_stride = 32'h0;
         current_device_type = GENERIC_DEVICE;
         
+        // BRAM接口初始化 - 增加时钟极性和存储器类型定义
+    (* RAM_STYLE = "BLOCK" *)
+    bram_addr_a = 10'h0;
+    bram_addr_b = 10'h0;
+    bram_din_a = 32'h0;
+    bram_en_a = 1'b0;
+    bram_we_a = 4'h0;
+    bram_en_b = 1'b0;
+    
+    // 初始化write_enable信号处理相关寄存器
+    reg [3:0] write_enable_reg;
+    reg write_enable_valid_reg;
+        
+        // 保护机制初始化
+        access_timeout = 16'h0;
+        counter_overflow = 1'b0;
+        error_status = 4'h0;
+        debounce_counter = 4'h0;
+        stable_access = 1'b0;
+        timing_guard = 8'h0;
+        
         // 初始化访问模式数组
         for(int i = 0; i < 16; i++) begin
             access_pattern[i] = 32'h0;
@@ -146,6 +189,70 @@ module pcileech_bar_impl_zerowrite4k(
         device_signatures[2] = 32'h8086_2822; // 存储控制器
         device_signatures[3] = 32'h10DE_1180; // 图形卡
         device_signatures[4] = 32'h8086_1E31; // USB控制器
+    end
+    
+    // 复位逻辑 - 同步复位
+    always @(posedge clk) begin
+        if(rst) begin
+            // 基本状态复位
+            access_counter <= 8'h00;
+            counter_overflow_flag <= 1'b0;
+            counter_recovery_timer <= 32'h0;
+            stealth_mode_active <= 1'b1;
+            sequential_access_detected <= 1'b0;
+            scan_pattern_detected <= 1'b0;
+            stride_pattern_detected <= 1'b0;
+            random_probe_detected <= 1'b0;
+            pattern_index <= 5'b00000;
+            timing_index <= 4'b0000;
+            last_access_addr <= 32'h0;
+            last_read_addr <= 32'h0;
+            consecutive_reads <= 4'h0;
+            read_interval_timer <= 16'h0;
+            detection_confidence <= 5'h0;
+            current_response_mode <= INTELLIGENT;
+            previous_response_mode <= INTELLIGENT;
+            dynamic_response_value <= 32'h12345678;
+            current_time <= 32'h0;
+            last_access_time <= 32'h0;
+            timing_variance <= 8'h0;
+            pattern_stride <= 32'h0;
+            current_device_type <= GENERIC_DEVICE;
+            debounce_counter <= 8'h0;
+            write_enable_reg <= 4'h0;
+            write_enable_valid_reg <= 1'b0;
+            
+            // BRAM接口复位
+            bram_addr_a <= 10'h0;
+            bram_addr_b <= 10'h0;
+            bram_din_a <= 32'h0;
+            bram_en_a <= 1'b0;
+            bram_we_a <= 4'h0;
+            bram_en_b <= 1'b0;
+            
+            // 保护机制复位
+            access_timeout <= 16'h0;
+            counter_overflow <= 1'b0;
+            error_status <= 4'h0;
+            debounce_counter <= 4'h0;
+            stable_access <= 1'b0;
+            timing_guard <= 8'h0;
+            
+            // 复位访问模式数组
+            for(int i = 0; i < 16; i++) begin
+                access_pattern[i] <= 32'h0;
+            end
+            
+            // 复位访问时间间隔数组
+            for(int i = 0; i < 8; i++) begin
+                access_timing[i] <= 8'h0;
+            end
+            
+            // 复位模式频率数组
+            for(int i = 0; i < 5; i++) begin
+                pattern_frequency[i] <= 32'h0;
+            end
+        end
     end
     
     // 高级访问模式检测逻辑 - 机器学习启发的模式识别
@@ -259,19 +366,29 @@ module pcileech_bar_impl_zerowrite4k(
                 end
                 
                 // 自适应响应模式选择 - 基于多种检测结果和置信度
-                previous_response_mode <= current_response_mode; // 保存上一个模式
-                
+                previous_response_mode <= current_response_mode; // 检测到高级扫描 - 使用欺骗模式
                 if(scan_pattern_detected && random_probe_detected) begin
-                    // 检测到高级扫描 - 使用欺骗模式
-                    current_response_mode <= DECEPTIVE;
+                    if(previous_response_mode != DECEPTIVE) begin
+                        previous_response_mode <= current_response_mode;
+                        current_response_mode <= DECEPTIVE;
+                    end
                 end
                 else if(scan_pattern_detected || (sequential_access_detected && detection_confidence >= 8)) begin
                     // 检测到常规扫描 - 使用伪装模式
-                    current_response_mode <= CAMOUFLAGE;
-                }
+                    if(previous_response_mode != CAMOUFLAGE) begin
+                        previous_response_mode <= current_response_mode;
+                        current_response_mode <= CAMOUFLAGE;
+                    end
+                end
                 else if(stride_pattern_detected && detection_confidence >= 5) begin
                     // 检测到固定步长访问 - 使用变色龙模式
-                    current_response_mode <= CHAMELEON;
+                    if(previous_response_mode != CHAMELEON && debounce_counter >= 8'hFF) begin
+                        previous_response_mode <= current_response_mode;
+                        current_response_mode <= CHAMELEON;
+                        debounce_counter <= 8'h0;
+                    end else begin
+                        debounce_counter <= debounce_counter + 1'b1;
+                    end
                     
                     // 根据访问模式动态选择设备类型
                     if(pattern_frequency[1] > pattern_frequency[0] && 
@@ -548,16 +665,77 @@ module pcileech_bar_impl_zerowrite4k(
     wire write_enable = wr_valid && (is_critical_region || !stealth_mode_active);
     
     // 使用BRAM存储数据
+    // BRAM访问控制和保护逻辑
+    always @(posedge clk) begin
+        if(rst) begin
+            bram_addr_a <= 10'h0;
+            bram_addr_b <= 10'h0;
+            bram_din_a <= 32'h0;
+            bram_en_a <= 1'b0;
+            bram_we_a <= 4'h0;
+            bram_en_b <= 1'b0;
+            access_timeout <= 16'h0;
+            counter_overflow <= 1'b0;
+            error_status <= 4'h0;
+        end else begin
+            // 访问超时检测
+            if(access_timeout > 0) begin
+                access_timeout <= access_timeout - 1'b1;
+            end
+            
+            // 写访问控制
+            if(wr_valid && !counter_overflow) begin
+                // 检查是否在关键区域内
+                if(is_critical_region) begin
+                    bram_addr_a <= wr_addr[11:2];
+                    bram_din_a <= wr_data;
+                    bram_en_a <= 1'b1;
+                    bram_we_a <= wr_be;
+                    access_timeout <= 16'hFFFF; // 设置访问超时
+                end else begin
+                    // 非关键区域写入被忽略
+                    bram_en_a <= 1'b0;
+                    bram_we_a <= 4'h0;
+                end
+            end else begin
+                bram_en_a <= 1'b0;
+                bram_we_a <= 4'h0;
+            end
+            
+            // 读访问控制
+            if(rd_req_valid && !counter_overflow) begin
+                bram_addr_b <= rd_req_addr[11:2];
+                bram_en_b <= 1'b1;
+                access_timeout <= 16'hFFFF; // 设置访问超时
+            end else begin
+                bram_en_b <= 1'b0;
+            end
+            
+            // 计数器溢出保护
+            if(access_counter == 8'hFF) begin
+                counter_overflow <= 1'b1;
+                error_status[0] <= 1'b1; // 设置溢出错误标志
+            end
+            
+            // 访问超时保护
+            if(access_timeout == 16'h0) begin
+                error_status[1] <= 1'b1; // 设置超时错误标志
+            end
+        end
+    end
+    
+    // BRAM实例化和连接
+    (* ram_style = "block" *)
     bram_bar_zero4k i_bram_bar_zero4k(
         // Port A - write:
-        .addra  (wr_addr[11:2]),
-        .clka   (clk),
-        .dina   (wr_data),
-        .ena    (write_enable),  // 只有关键区域或非隐身模式下才实际写入
-        .wea    (wr_be),
-        // Port A - read (2 CLK latency):
-        .addrb  (rd_req_addr[11:2]),
-        .clkb   (clk),
+        .addra  ( bram_addr_a       ),
+        .clka   ( clk               ),
+        .dina   ( bram_din_a        ),
+        .ena    ( write_enable_valid_reg ),
+        .wea    ( write_enable_reg   ),
+        // Port B - read (2 CLK latency):
+        .addrb  ( bram_addr_b       ),
+        .clkb   ( clk               ),
         .doutb  (doutb),
         .enb    (rd_req_valid)
     );

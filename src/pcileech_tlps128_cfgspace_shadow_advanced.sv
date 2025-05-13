@@ -15,7 +15,7 @@ module pcileech_tlps128_cfgspace_shadow_advanced(
     // ----------------------------------------------------------------------------
     reg [7:0]  access_pattern_counter;
     reg [31:0] last_access_addr;
-    reg [31:0] last_access_time;
+    reg [31:0] access_time_counter;  // 改用普通计数器替代$time
     reg [31:0] access_interval;    // 访问间隔计数器
     reg        suspicious_activity;
     reg [1:0]  defense_level;      // 0:正常, 1:警戒, 2:高度防御
@@ -41,17 +41,20 @@ module pcileech_tlps128_cfgspace_shadow_advanced(
             suspicious_activity <= 1'b0;
             consecutive_access_count <= 4'h0;
             access_interval <= 32'h0;
-            last_access_time <= 32'h0;
+            access_time_counter <= 32'h0;
         end else begin
+            // 递增时间计数器，用于测量访问间隔
+            access_time_counter <= access_time_counter + 1'b1;
+            
             // 访问频率监控
             if (pcie_rx_valid) begin
                 if (access_pattern_counter < 8'hFF)
                     access_pattern_counter <= access_pattern_counter + 1'b1;
                     
                 // 检测连续访问模式
-                // 计算访问间隔
-                access_interval <= last_access_time - $time;
-                last_access_time <= $time;
+                // 计算访问间隔 - 不再使用$time，改用计数器
+                access_interval <= access_time_counter;
+                access_time_counter <= 32'h0; // 重置计数器
                 
                 // 检测连续访问模式
                 if (pcie_rx_addr == last_access_addr + 4) begin

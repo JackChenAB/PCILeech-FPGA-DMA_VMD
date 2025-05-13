@@ -17,19 +17,27 @@
 // Interface connecting COM to FIFO module.
 // ------------------------------------------------------------------------
 interface IfComToFifo;
+    // 系统时钟和复位信号
+    wire            clk;
+    wire            rst;
+    
+    // 数据传输信号
     wire [63:0]     com_dout;
     wire            com_dout_valid;
     wire [255:0]    com_din;
     wire            com_din_wr_en;
     wire            com_din_ready;
+    wire            com_valid;     // 数据有效指示
 
     modport mp_com (
-        output com_dout, com_dout_valid, com_din_ready,
+        input clk, rst,
+        output com_dout, com_dout_valid, com_din_ready, com_valid,
         input com_din, com_din_wr_en
     );
 
     modport mp_fifo (
-        input com_dout, com_dout_valid, com_din_ready,
+        input clk, rst,
+        input com_dout, com_dout_valid, com_din_ready, com_valid,
         output com_din, com_din_wr_en
     );
 endinterface
@@ -185,11 +193,11 @@ interface IfAXIS128;
     );
     
     modport source_lite(
-        output tdata, tkeepdw, tvalid, tlast, tuser
+        output tdata, tkeepdw, tvalid, tlast, tuser, has_data
     );
     
     modport sink_lite(
-        input  tdata, tkeepdw, tvalid, tlast, tuser
+        input  tdata, tkeepdw, tvalid, tlast, tuser, has_data
     );
 endinterface
 
@@ -197,20 +205,29 @@ endinterface
 // Interface connecting PCIe CFG to FIFO
 // ------------------------------------------------------------------------
 interface IfPCIeFifoCfg;
+    // 系统时钟和复位信号
+    wire                clk;
+    wire                rst;
+    
+    // 数据传输信号
     wire    [63:0]      tx_data;
     wire                tx_valid;
+    wire                tx_ready;    // 发送就绪指示
     wire    [31:0]      rx_data;
     wire                rx_valid;
     wire                rx_rd_en;
+    wire                rx_ready;    // 接收就绪指示
 
     modport mp_fifo (
+        input clk, rst,
         output tx_data, tx_valid, rx_rd_en,
-        input rx_data, rx_valid
+        input rx_data, rx_valid, tx_ready, rx_ready
     );
 
     modport mp_pcie (
+        input clk, rst,
         input tx_data, tx_valid, rx_rd_en,
-        output rx_data, rx_valid
+        output rx_data, rx_valid, tx_ready, rx_ready
     );
 endinterface
 
@@ -218,23 +235,34 @@ endinterface
 // Interface connecting PCIe TLP to FIFO
 // ------------------------------------------------------------------------
 interface IfPCIeFifoTlp;
+    // 系统时钟和复位信号
+    wire                clk;
+    wire                rst;
+    
+    // 发送数据信号
     wire    [31:0]      tx_data;
     wire                tx_last;
-    wire                tx_valid;   
-    wire    [31:0]      rx_data[4];
-    wire                rx_first[4];
-    wire                rx_last[4];
-    wire                rx_valid[4];
+    wire                tx_valid;
+    wire                tx_ready;    // 发送就绪指示
+    
+    // 接收数据信号(4通道)
+    wire    [31:0]      rx_data[4];  // 4个32位数据通道
+    wire                rx_first[4]; // 首包指示
+    wire                rx_last[4];  // 尾包指示
+    wire                rx_valid[4]; // 数据有效指示
+    wire                rx_ready;    // 接收就绪指示
     wire                rx_rd_en;
 
     modport mp_fifo (
+        input clk, rst,
         output tx_data, tx_last, tx_valid, rx_rd_en,
-        input rx_data, rx_first, rx_last, rx_valid
+        input rx_data, rx_first, rx_last, rx_valid, tx_ready, rx_ready
     );
 
     modport mp_pcie (
+        input clk, rst,
         input tx_data, tx_last, tx_valid, rx_rd_en,
-        output rx_data, rx_first, rx_last, rx_valid
+        output rx_data, rx_first, rx_last, rx_valid, tx_ready, rx_ready
     );
 endinterface
 
@@ -265,27 +293,40 @@ interface IfPCIeFifoCore;
 endinterface
 
 interface IfShadow2Fifo;
-    // SHADOW CONFIGURATION SPACE TO FIFO
-    wire                rx_rden;
-    wire                rx_wren;
-    wire    [3:0]       rx_be;
-    wire    [31:0]      rx_data;
-    wire    [9:0]       rx_addr;
-    wire                rx_addr_lo;
-    wire                tx_valid;
-    wire    [31:0]      tx_data;
-    wire    [9:0]       tx_addr;
-    wire                tx_addr_lo;
-    wire                cfgtlp_wren;
-    wire                cfgtlp_zero;
-    wire                cfgtlp_en;
-    wire                cfgtlp_filter;
-    wire                alltlp_filter;
-    wire                bar_en;
+    // 系统时钟和复位信号
+    wire                clk;
+    wire                rst;
+    
+    // 接收控制信号
+    wire                rx_rden;      // 读使能
+    wire                rx_wren;      // 写使能
+    wire    [3:0]       rx_be;        // 字节使能
+    wire    [31:0]      rx_data;      // 接收数据
+    wire    [9:0]       rx_addr;      // 接收地址
+    wire                rx_addr_lo;    // 地址低位标识
+    wire                rx_ready;      // 接收就绪
+    
+    // 发送控制信号
+    wire                tx_valid;      // 发送有效
+    wire    [31:0]      tx_data;      // 发送数据
+    wire    [9:0]       tx_addr;      // 发送地址
+    wire                tx_addr_lo;    // 地址低位标识
+    wire                tx_ready;      // 发送就绪
+    
+    // TLP控制信号
+    wire                cfgtlp_wren;   // 配置TLP写使能
+    wire                cfgtlp_zero;   // 零填充使能
+    wire                cfgtlp_en;     // TLP使能控制
+    wire                cfgtlp_filter; // TLP过滤控制
+    wire                alltlp_filter; // 全局TLP过滤
+    wire                bar_en;        // BAR空间使能
     
     // 控制位定义：
-    // cfgtlp_en: TLP回响使能位
+    // cfgtlp_en: TLP回响使能位，控制配置TLP的处理
     // cfgtlp_zero: 隐身模式使能位，用于zero4k伪装策略
+    // cfgtlp_filter: TLP过滤控制，用于选择性处理TLP包
+    // alltlp_filter: 全局TLP过滤开关
+    // bar_en: BAR地址空间映射使能
     
     modport fifo (
         output cfgtlp_wren, cfgtlp_zero, rx_rden, rx_wren, rx_be, rx_addr, rx_addr_lo, rx_data, cfgtlp_en, cfgtlp_filter, alltlp_filter, bar_en,
