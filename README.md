@@ -4,6 +4,14 @@
 
 本项目是PCILeech FPGA实现，基于Xilinx Artix-7 XC7A75T-FGG484芯片，专门仿真Intel RST VMD（Volume Management Device）控制器。PCILeech是一个直接内存访问（DMA）工具，可用于硬件安全研究和测试。该项目通过模拟Intel RST VMD控制器（设备ID：9A0B）实现对现代系统的DMA访问.
 
+## 最新更新
+
+- **IP核优化** - 修复了配置空间内存深度，支持更完整的VMD能力集合
+- **安全性增强** - 添加了访问模式识别和动态响应控制机制
+- **隐身模式** - 实现了TLP回响和扫描检测功能，应对安全监控
+- **MSI-X完善** - 改进MSI-X中断处理逻辑，提高系统兼容性
+- **状态机改进** - 修复了各模块状态机的超时处理逻辑
+
 ## 技术原理
 
 ### VMD控制器仿真
@@ -14,23 +22,37 @@
 2. **PCIe配置空间模拟** - 完整实现PCIe配置空间，包括必要的能力结构（Capability Structures）
 3. **MSI-X中断支持** - 实现MSI-X中断机制，确保与现代操作系统兼容
 4. **BAR空间实现** - 提供完整的基地址寄存器（BAR）空间实现，支持内存映射操作
+5. **动态响应机制** - 智能识别系统查询模式，自适应调整响应策略
 
 ### 关键模块说明
 
 - **pcileech_fifo.sv** - FIFO网络控制模块，负责数据传输和命令处理
 - **pcileech_ft601.sv** - FT601/FT245控制器模块，处理USB通信
 - **pcileech_pcie_cfg_a7.sv** - PCIe配置模块，处理Artix-7的CFG操作
+- **pcileech_tlps128_cfgspace_shadow.sv** - 配置空间阴影模块，支持动态配置响应
+- **pcileech_tlps128_cfgspace_shadow_advanced.sv** - 增强型配置空间，支持访问模式分析
+- **pcileech_pcie_tlp_a7.sv** - TLP处理核心，支持回响和隐身模式
+- **pcileech_bar_impl_vmd_msix.sv** - 实现带MSI-X中断功能的BAR，支持VMD控制器
 - **pcileech_75t484_x1_vmd_top.sv** - 顶层模块，集成所有功能组件
-- **pcileech_bar_impl_vmd_msix.sv** - 实现带MSI-X中断功能的BAR，支持Intel RST VMD控制器仿真
 
 ## 项目结构
 
 - `ip/` - 包含项目所需的IP核文件
   - 包括PCIe接口、FIFO、BRAM等IP核
+  - 最新版本已修复内存深度和COE文件格式问题
 - `src/` - 包含SystemVerilog源代码文件
   - 核心功能模块和顶层设计
 - `vivado_build.tcl` - Vivado构建脚本
 - `vivado_generate_project_captaindma_75t.tcl` - 项目生成脚本
+
+## IP核修复说明
+
+最新版本修复了以下IP核相关问题：
+
+1. **配置空间深度扩展** - 将BRAM深度从1024增加到2048，支持完整的VMD控制器特性
+2. **COE文件格式修正** - 添加了正确的初始化格式头部
+3. **BAR空间内存扩展** - 支持更大的寄存器区域，满足MSI-X表和PBA需求
+4. **Vendor/Device ID一致性** - 确保所有模块使用统一的厂商ID和设备ID
 
 ## 构建说明
 
@@ -44,6 +66,10 @@
    source vivado_build.tcl -notrace
    ```
    注意：合成和实现步骤可能需要较长时间。
+4. 使用IP核验证脚本检查IP配置一致性：
+   ```
+   source ip/verify_ip_consistency.tcl
+   ```
 
 ## 使用方法
 
@@ -58,6 +84,7 @@
 - 物理内存转储
 - DMA攻击测试
 - 硬件安全研究
+- NVMe命令模拟（新增功能）
 
 ## 技术规格
 
@@ -65,7 +92,17 @@
 - **PCIe接口**：Gen2 x1
 - **USB接口**：通过FT601实现高速数据传输
 - **仿真设备**：Intel RST VMD控制器（设备ID：9A0B）
-- **PCI类代码**：060400（PCI桥接器）
+- **PCI类代码**：080600（Intel VMD控制器）
+- **内存容量**：支持最大2048深度的配置空间，4K的BAR空间
+
+## 安全功能说明
+
+最新版本增加了以下安全特性：
+
+1. **访问模式分析** - 监控系统对VMD设备的访问模式，识别异常扫描行为
+2. **动态响应控制** - 根据访问模式自动调整响应策略，应对安全检测
+3. **TLP回响功能** - 支持将接收到的TLP包回传，实现通信伪装
+4. **隐身模式** - 当检测到系统扫描时激活，降低被检测风险
 
 ## 许可证信息
 
