@@ -68,7 +68,20 @@ module pcileech_tlps128_cfgspace_shadow_advanced(
     wire [31:0]         pcie_rx_data    = tlps_in.tdata[127:96];
     wire [7:0]          pcie_rx_tag     = tlps_in.tdata[47:40];
     wire [2:0]          pcie_rx_status  = {~pcie_rx_valid, ~pcie_rx_addr_valid, 1'b0};  // Status for completion
-    wire [3:0]          pcie_rx_be      = {tlps_in.tdata[32], tlps_in.tdata[33], tlps_in.tdata[34], tlps_in.tdata[35]};
+    
+    // 正确提取字节使能信号
+    reg [3:0]           pcie_rx_be;
+    always @(*) begin
+        if (tlps_in.tkeepdw[0]) begin
+            pcie_rx_be[0] = tlps_in.tdata[32];
+            pcie_rx_be[1] = tlps_in.tdata[33];
+            pcie_rx_be[2] = tlps_in.tdata[34];
+            pcie_rx_be[3] = tlps_in.tdata[35];
+        end else begin
+            pcie_rx_be = 4'h0;
+        end
+    end
+    
     wire [15:0]         pcie_rx_reqid   = tlps_in.tdata[63:48];
     
     // 访问模式分析逻辑

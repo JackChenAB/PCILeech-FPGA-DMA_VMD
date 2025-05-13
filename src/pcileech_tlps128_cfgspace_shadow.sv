@@ -459,21 +459,23 @@ module pcileech_tlps128_cfgspace_shadow(
                 if (pcie_rx_addr == 10'h01) begin
                     // 如果是Command/Status寄存器，仅处理Command部分
                     // Status部分使用RW1C寄存器处理
-                    if (tlps_in.tkeep[0]) config[pcie_rx_addr][7:0] <= tlps_in.tdata[7:0];
-                    if (tlps_in.tkeep[1]) config[pcie_rx_addr][15:8] <= tlps_in.tdata[15:8];
+                    if (tlps_in.tkeepdw[0]) config[pcie_rx_addr][7:0] <= tlps_in.tdata[7:0];
+                    if (tlps_in.tkeepdw[0]) config[pcie_rx_addr][15:8] <= tlps_in.tdata[15:8];
                     
                     // 使用RW1C寄存器处理Status部分
-                    if (tlps_in.tkeep[2] || tlps_in.tkeep[3]) begin
+                    if (tlps_in.tkeepdw[0]) begin
                         pcie_status_wr_en <= 1'b1;
                         pcie_status_wr_data <= tlps_in.tdata[31:16];
-                        pcie_status_wr_mask <= {tlps_in.tkeep[3] ? 8'hFF : 8'h00, tlps_in.tkeep[2] ? 8'hFF : 8'h00};
+                        pcie_status_wr_mask <= 16'hFFFF;
                     end
                 end else begin
                     // 其他寄存器正常处理
-                    if (tlps_in.tkeep[0]) config[pcie_rx_addr][7:0] <= tlps_in.tdata[7:0];
-                    if (tlps_in.tkeep[1]) config[pcie_rx_addr][15:8] <= tlps_in.tdata[15:8];
-                    if (tlps_in.tkeep[2]) config[pcie_rx_addr][23:16] <= tlps_in.tdata[23:16];
-                    if (tlps_in.tkeep[3]) config[pcie_rx_addr][31:24] <= tlps_in.tdata[31:24];
+                    if (tlps_in.tkeepdw[0]) begin
+                        config[pcie_rx_addr][7:0] <= tlps_in.tdata[7:0];
+                        config[pcie_rx_addr][15:8] <= tlps_in.tdata[15:8];
+                        config[pcie_rx_addr][23:16] <= tlps_in.tdata[23:16];
+                        config[pcie_rx_addr][31:24] <= tlps_in.tdata[31:24];
+                    end
                 end
             end else begin
                 shadow_valid <= 1'b0;
