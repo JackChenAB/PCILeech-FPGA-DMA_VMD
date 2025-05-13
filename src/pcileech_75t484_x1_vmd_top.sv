@@ -25,7 +25,7 @@ module pcileech_75t484_x1_vmd_top #(
     // 传递给子模块的自定义参数
     parameter       PARAM_CUSTOM_VALUE = 32'h00060400,  // 自定义值 (此处用于传递类代码)
     parameter       PARAM_VERSION = 32'h00010000,    // 版本1.0
-    parameter       PARAM_FUNCTION_COUNT = 8'h04,    // 支持的功能数量
+    parameter       PARAM_FUNCTION_COUNT = 8'h03,    // 支持的功能数量减少到3个(1个VMD控制器+2个NVMe端点)
     parameter       PARAM_DEVICE_CLASS = 8'h08,      // 基础设备类型: 通用系统外设
     parameter       PARAM_DEVICE_SUBCLASS = 8'h06,   // 子类型: VMD控制器
     parameter       PARAM_DEVICE_INTERFACE = 8'h00   // 接口: 无特定接口

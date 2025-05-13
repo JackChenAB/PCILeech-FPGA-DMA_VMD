@@ -151,11 +151,22 @@ module pcileech_mem_wrap_multi(
             // 建立设备关系映射
             device_relation_map[i] = (i == 0) ? 32'h0000007F : (1 << (i-1));
             
-            // 创建ACPI路径 - 格式为PCI0.GPxx.VMDy或PCI0.GPxx.NPMy
-            acpi_path_data[i][0] = 32'h50434930;  // "PCI0"
-            acpi_path_data[i][1] = 32'h2e475030 | ((pcie_device_number & 0x1F) << 8);  // ".GP0x"
-            acpi_path_data[i][2] = (i == 0) ? 32'h2e564d44 : 32'h2e4e504d;  // ".VMD"或".NPM"
-            acpi_path_data[i][3] = 32'h00000000 | (i & 0x7);  // 序号0-7
+            // 创建ACPI路径 - 标准格式化版本
+            // 格式为PCI0.GPxx.VMDy或PCI0.GPxx.NPMy
+            // "PCI0" - ACPI路径第一部分
+            acpi_path_data[i][0] = 32'h50434930;
+            
+            // ".GP0x" - ACPI路径第二部分，包含设备号
+            acpi_path_data[i][1] = 32'h2e475030 | ((pcie_device_number & 32'h0000001F) << 8);
+            
+            // ".VMD" 或 ".NPM" - ACPI路径第三部分，区分功能类型
+            if (i == 0)
+                acpi_path_data[i][2] = 32'h2e564d44;  // ".VMD" (VMD控制器)
+            else
+                acpi_path_data[i][2] = 32'h2e4e504d;  // ".NPM" (NVMe端点)
+            
+            // 添加功能序号 (0-7)
+            acpi_path_data[i][3] = 32'h00000000 | (i & 32'h00000007);
             
             // 初始化NVMe相关数据结构
             for (j = 0; j < 16; j = j + 1) begin

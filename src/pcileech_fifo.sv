@@ -213,7 +213,7 @@ module pcileech_fifo #(
     reg     [239:0]     rw;
     
     // special non-user accessible registers 
-    reg     [79:0]      _pcie_core_config = { 4'hf, 1'b1, 1'b1, 1'b0, 1'b0, 8'h02, 16'h9A0B, 16'h8086, 16'h0007, 16'h8086 };
+    reg     [79:0]      _pcie_core_config = { 4'hf, 1'b1, 1'b1, 1'b0, 1'b0, 8'h02, 16'h9A0B, 16'h8086, 16'h0003, 16'h8086 };
     time                _cmd_timer_inactivity_base;
     reg                 rwi_drp_rd_en;
     reg                 rwi_drp_wr_en;
@@ -280,7 +280,7 @@ module pcileech_fifo #(
             // PCIE INITIAL CONFIG (SPECIAL BITSTREAM)
             // NB! "initial" CLK0 values may also be changed in: '_pcie_core_config = {...};' [important on PCIeScreamer].
             rw[143:128] <= 16'h8086;                    // +010: CFG_SUBSYS_VEND_ID (Intel)
-            rw[159:144] <= 16'h0007;                    // +012: CFG_SUBSYS_ID      (NOT IMPLEMENTED)
+            rw[159:144] <= 16'h0003;                    // +012: CFG_SUBSYS_ID      (NOT IMPLEMENTED)
             rw[175:160] <= 16'h8086;                    // +014: CFG_VEND_ID        (Intel)
             rw[191:176] <= 16'h0A0C;                    // +016: CFG_DEV_ID         (NVMe Controller)
             rw[199:192] <= 8'h02;                       // +018: CFG_REV_ID         (NOT IMPLEMENTED)

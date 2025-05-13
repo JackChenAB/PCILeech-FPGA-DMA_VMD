@@ -217,7 +217,7 @@ module pcileech_tlps128_filter(
     reg             stealth_active = 0;
     reg [1:0]       scan_detect_state = 0;
     reg [31:0]      last_addr = 0;
-    reg [31:0]      curr_addr;  // 将当前地址声明为寄存器变量
+    reg [31:0]      curr_addr = 0;  // 将curr_addr声明为寄存器变量
     
     assign tlps_out.tdata   = tdata;
     assign tlps_out.tkeepdw = tkeepdw;
@@ -266,6 +266,7 @@ module pcileech_tlps128_filter(
             stealth_active <= 0;
             scan_detect_state <= 0;
             last_addr <= 0;
+            curr_addr <= 0;
         end
         else if (stealth_mode && tlps_in.tvalid && first) begin
             // 计数器递增，用于周期性激活隐身模式
@@ -274,7 +275,7 @@ module pcileech_tlps128_filter(
             // 检测连续的内存读取操作（可能是扫描）
             if (is_tlphdr_memrd) begin
                 // 提取当前内存读取的地址
-                curr_addr = tlps_in.tdata[95:64]; // 内存读取地址，使用非阻塞赋值
+                curr_addr <= tlps_in.tdata[95:64]; // 更新当前地址寄存器
                 
                 // 改进的扫描检测逻辑 - 更关注地址空间中的模式和频率
                 if (last_addr != 0) begin

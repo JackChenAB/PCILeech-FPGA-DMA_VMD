@@ -12,17 +12,107 @@
 - **bram_bar_zero4k.xci** - BAR空间实现的BRAM
 - **fifo_*.xci** - 各种FIFO模块，用于数据传输和缓冲
 
-### 配置文件
+### 配置文件(COE)
 
-- **pcileech_cfgspace.coe** - PCIe配置空间初始值
-- **pcileech_cfgspace_writemask.coe** - PCIe配置空间写掩码
-- **pcileech_bar_zero4k.coe** - BAR空间初始值
+COE (Coefficient) 文件在FPGA设计中用于初始化存储器内容，如BRAM、ROM等。在PCILeech-FPGA项目中，这些文件主要用于：
+
+1. PCIe配置空间的初始化 (`pcileech_cfgspace.coe`)
+2. 写掩码定义 (`pcileech_cfgspace_writemask.coe`)
+3. BAR区域的默认内容 (`pcileech_bar_zero4k.coe`)
+4. NVMe配置内容 (`nvme_config.coe`, `nvme_endpoint_config.coe`, `nvme_endpoint_[1-2].coe`)
+5. 配置选择器设置 (`config_selector.coe`)
+6. VMD控制器特定内容 (`vmd_msix.coe`, `vmd_bar.coe`)
 
 ### 工具脚本
 
-- **generate_pcileech_cfgspace_writemask.py** - 生成PCIe配置空间写掩码的Python脚本
-- **generate_writemask.php** - 生成PCIe配置空间写掩码的PHP脚本（备选方案）
+- **generate_writemask.php** - 生成PCIe配置空间写掩码的PHP脚本
 - **verify_ip_consistency.tcl** - 验证IP核配置一致性的TCL脚本
+- **fix_coe_mask_format.php** - 修复COE文件格式的PHP脚本
+- **maintain_coe_format.php** - 维护COE文件标准格式的PHP脚本
+- **generate_vmd_msix.php** - 生成VMD控制器MSI-X表格初始化数据
+- **generate_vmd_bar.php** - 生成VMD控制器BAR区域初始化数据
+- **generate_nvme_endpoints.php** - 生成多个NVMe端点的配置数据
+
+## COE文件标准格式
+
+为了保持代码库的一致性和可读性，所有COE文件应遵循以下格式标准：
+
+```
+memory_initialization_radix=16;
+memory_initialization_vector=
+00000000 FFFF0000 00000000 FFFFFF00
+FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF
+...
+00000000 00000000 00000000 00000000;
+```
+
+主要格式规则：
+- 第一行指定数据格式为十六进制 (`radix=16`)
+- 向量声明后换行
+- 每行包含4个数据值，用空格分隔
+- 文件末尾的分号之前不应有额外的换行
+
+## COE文件维护工具
+
+本目录包含以下用于维护COE文件格式的PHP脚本：
+
+1. `fix_coe_mask_format.php` - 一次性修复脚本，将单行格式转换为多行格式
+2. `maintain_coe_format.php` - 维护脚本，定期运行以确保所有文件保持标准格式
+
+### 使用方法
+
+在ip目录下运行：
+
+```bash
+php maintain_coe_format.php
+```
+
+该脚本将：
+- 检查所有.coe文件的格式
+- 转换单行格式为标准多行格式
+- 修复空行问题
+- 提供详细的处理报告
+
+## COE文件组织
+
+COE文件按功能分类如下：
+
+### 1. 基础PCIe配置
+
+- `pcileech_cfgspace.coe` - PCIe设备的标准配置空间
+- `pcileech_cfgspace_writemask.coe` - 定义哪些配置寄存器可写
+- `pcileech_bar_zero4k.coe` - 基本BAR空间内容
+
+### 2. VMD控制器特定文件
+
+- `vmd_msix.coe` - VMD控制器的MSI-X表格数据
+- `vmd_bar.coe` - VMD控制器BAR区域寄存器初始值
+
+### 3. NVMe设备配置
+
+- `nvme_config.coe` - NVMe控制器通用配置
+- `nvme_endpoint_config.coe` - NVMe端点基本配置
+- `nvme_endpoint_[1-2].coe` - 具体NVMe端点的特定配置
+
+### 4. 其他配置
+
+- `config_selector.coe` - 系统配置选择器设置
+
+## 生成新的COE文件
+
+如果需要生成新的COE文件，可以使用以下脚本：
+
+1. 写掩码相关：
+   - `generate_writemask.php` - 生成PCIe配置空间写掩码
+
+2. VMD控制器相关：
+   - `generate_vmd_msix.php` - 生成VMD控制器MSI-X表格数据
+   - `generate_vmd_bar.php` - 生成VMD控制器BAR区域寄存器数据
+
+3. NVMe端点相关：
+   - `generate_nvme_endpoints.php` - 生成多个NVMe端点的配置数据
+
+也可以手动创建遵循标准格式的COE文件，或者使用维护脚本将单行格式转换为标准多行格式。
 
 ## VMD控制器IP核配置
 
@@ -49,14 +139,6 @@ VMD控制器需要特别注意的寄存器包括：
 
 可以使用以下方法生成写掩码文件：
 
-#### 使用Python脚本(推荐)
-
-```bash
-python generate_pcileech_cfgspace_writemask.py
-```
-
-#### 使用PHP脚本(备选)
-
 ```bash
 php generate_writemask.php
 ```
@@ -66,7 +148,8 @@ php generate_writemask.php
 ```
 memory_initialization_radix=16;
 memory_initialization_vector=
-00000000,ffff0000,00000000,...;
+00000000 FFFF0000 00000000 FFFFFF00
+...
 ```
 
 ### BRAM深度配置
@@ -124,6 +207,11 @@ Intel RST VMD控制器(设备ID: 9A0B)需要特定配置：
 - 写掩码格式必须正确，否则会导致PCIe配置空间行为异常
 - BAR空间大小必须足够容纳MSI-X表和VMD寄存器
 - 所有IP核应使用相同的设备ID和厂商ID
+- 修改COE文件后，需要重新生成IP核心才能使更改生效
+- 一些IP核心可能对COE文件格式有特定要求，请参考Xilinx文档
+- 在版本控制提交前，请确保运行维护脚本检查COE文件格式
+
+**重要**：COE文件格式错误可能导致IP核生成失败或行为不符合预期。在提交代码前，请确保所有COE文件都遵循标准格式。
 
 ## 从PCILeech到VMD控制器的修改
 
@@ -134,3 +222,17 @@ Intel RST VMD控制器(设备ID: 9A0B)需要特定配置：
 3. 添加RW1C寄存器支持（通过写掩码实现）
 4. 配置BAR空间以支持MSI-X和VMD寄存器
 5. 优化FIFO配置以提高数据传输稳定性 
+
+## VMD和NVMe配置文件
+
+项目新增了多个配置文件，支持Intel RST VMD控制器和多个NVMe设备的模拟：
+
+1. **VMD控制器文件**：
+   - `vmd_msix.coe` - 定义VMD控制器的MSI-X表格初始化数据，支持高级中断功能
+   - `vmd_bar.coe` - 初始化VMD控制器的BAR区域寄存器，这些寄存器暴露给主机系统
+
+2. **NVMe端点文件**：
+   - `nvme_endpoint_[1-2].coe` - 为多个NVMe端点设备提供特定配置
+   - 每个设备具有唯一的设备ID、序列号和容量设置
+
+这些配置文件与`pcileech_bar_impl_vmd_msix.sv`模块配合使用，实现完整的VMD控制器和NVMe端点功能。要更新或修改这些配置，可以使用相应的生成脚本重新生成配置文件。 
