@@ -421,6 +421,18 @@ set files [list \
  [file normalize "${origin_dir}/ip/pcileech_bar_zero4k.coe" ]\
  [file normalize "${origin_dir}/ip/pcileech_cfgspace.coe" ]\
  [file normalize "${origin_dir}/ip/pcileech_cfgspace_writemask.coe" ]\
+ [file normalize "${origin_dir}/ip/pcileech_bar_zero4k_writemask.coe" ]\
+ [file normalize "${origin_dir}/ip/vmd_bar_writemask.coe" ]\
+ [file normalize "${origin_dir}/ip/vmd_msix_writemask.coe" ]\
+ [file normalize "${origin_dir}/ip/nvme_endpoint_writemask.coe" ]\
+ [file normalize "${origin_dir}/ip/config_selector.coe" ]\
+ [file normalize "${origin_dir}/ip/rw1c_register_template.coe" ]\
+ [file normalize "${origin_dir}/ip/vmd_bar.coe" ]\
+ [file normalize "${origin_dir}/ip/vmd_msix.coe" ]\
+ [file normalize "${origin_dir}/ip/nvme_config.coe" ]\
+ [file normalize "${origin_dir}/ip/nvme_endpoint_1.coe" ]\
+ [file normalize "${origin_dir}/ip/nvme_endpoint_2.coe" ]\
+ [file normalize "${origin_dir}/ip/nvme_endpoint_config.coe" ]\
  [file normalize "${origin_dir}/ip/bram_pcie_cfgspace.xci" ]\
 ]
 set imported_files [import_files -fileset sources_1 $files]
