@@ -13,7 +13,6 @@
 
 `timescale 1ns / 1ps
 `include "pcileech_header.svh"
-`include "pcileech_rw1c_register.sv"
 
 // ------------------------------------------------------------------------
 // BAR implementation with MSI-X and PCIe capability support for NVMe controller simulation
@@ -995,5 +994,291 @@ module pcileech_bar_impl_vmd_msix(
             // 自动清除中断有效信号的处理 - 在另一个always块中由计数器控制
         end
     end
+
+    // MSI-X状态机增强
+    localparam MSIX_STATE_IDLE      = 2'b00;  // 空闲状态
+    localparam MSIX_STATE_PENDING   = 2'b01;  // 中断挂起状态
+    localparam MSIX_STATE_ACTIVE    = 2'b10;  // 中断激活状态
+    localparam MSIX_STATE_RECOVERY  = 2'b11;  // 中断恢复状态
+
+    // 增强的MSI-X中断控制
+    reg [1:0]  msix_state[15:0];          // 每个中断向量的状态机
+    reg [7:0]  msix_active_counter[15:0]; // 中断活跃计数器 - 每个向量
+    reg [31:0] msix_last_data[15:0];      // 每个向量的上次数据
+    reg [63:0] msix_last_addr[15:0];      // 每个向量的上次地址
+    reg [15:0] msix_pending_mask;         // 挂起中断掩码
+    reg [15:0] msix_vector_enable;        // 向量使能掩码 - 对应MSI-X表
+    reg [15:0] msix_access_count;         // 向量访问计数 - 用于检测访问模式
+    reg        msix_table_access_flag;    // MSI-X表访问标志
+
+    // MSI-X 高级特性控制
+    reg        msix_advanced_mode;        // 高级模式使能
+    reg [7:0]  msix_throttle_counter;     // 中断限流计数器
+    reg [7:0]  msix_throttle_threshold;   // 中断限流阈值
+    reg [31:0] msix_vector_stats[15:0];   // 每个向量的使用统计
+
+    // MSI-X表优化访问和错误恢复
+    reg [15:0] msix_table_access_history; // 表访问历史记录
+    reg [7:0]  msix_sequential_access;    // 连续访问计数
+    reg [31:0] msix_table_read_addr;      // 表读取地址
+    reg [31:0] msix_table_write_addr;     // 表写入地址
+    reg        msix_pba_access_detected;  // PBA访问检测标志
+
+    // 挂起位数组 (PBA)模拟 - 更完整的MSI-X实现
+    reg [63:0] msix_pba_bits;             // 挂起位数组
+
+    // 初始化MSI-X增强部分
+    initial begin
+        // 初始化状态机和计数器
+        for (int i = 0; i < 16; i++) begin
+            msix_state[i] = MSIX_STATE_IDLE;
+            msix_active_counter[i] = 8'h00;
+            msix_last_data[i] = 32'h00000000;
+            msix_last_addr[i] = 64'h0000000000000000;
+            msix_vector_stats[i] = 32'h00000000;
+        end
+        
+        // 初始化控制寄存器
+        msix_pending_mask = 16'h0000;
+        msix_vector_enable = 16'h0000;
+        msix_access_count = 16'h0000;
+        msix_table_access_flag = 1'b0;
+        
+        // 高级特性初始化
+        msix_advanced_mode = 1'b0;
+        msix_throttle_counter = 8'h00;
+        msix_throttle_threshold = 8'h08; // 默认限流阈值
+        
+        // 访问跟踪初始化
+        msix_table_access_history = 16'h0000;
+        msix_sequential_access = 8'h00;
+        msix_table_read_addr = 32'h00000000;
+        msix_table_write_addr = 32'h00000000;
+        msix_pba_access_detected = 1'b0;
+        
+        // PBA模拟初始化
+        msix_pba_bits = 64'h0000000000000000;
+    end
+
+    // MSI-X表访问监控 - 在BAR写入和读取处理中增加代码
+    // 在wr_valid处理部分添加 - 约在250行左右
+    // 仅作为示例，具体位置根据实际代码调整
+    always @(posedge clk) begin
+        if (rst) begin
+            msix_table_access_flag <= 1'b0;
+            msix_table_access_history <= 16'h0000;
+            msix_sequential_access <= 8'h00;
+            msix_pba_access_detected <= 1'b0;
+        end else begin
+            // 监控MSI-X表区域访问
+            if (wr_valid) begin 
+                if ((wr_addr >= MSIX_TABLE_OFFSET) && (wr_addr < MSIX_TABLE_OFFSET + 32'h00001000)) begin
+                    // MSI-X表写入访问
+                    msix_table_access_flag <= 1'b1;
+                    msix_table_access_history <= {msix_table_access_history[14:0], 1'b1};
+                    msix_table_write_addr <= wr_addr;
+                    
+                    // 检测MSI-X表项修改
+                    if (((wr_addr & 32'h0000000F) == 32'h00000008) || ((wr_addr & 32'h0000000F) == 32'h0000000C)) begin
+                        // 控制寄存器访问 - 表项中的高地址或数据字段
+                        msix_vector_enable[wr_addr[7:4]] <= ~wr_be[3] || ~wr_data[31]; // 检查MSI-X表项控制位
+                    end
+                    
+                    // 跟踪连续访问
+                    if (msix_table_write_addr + 4 == wr_addr) begin
+                        if (msix_sequential_access < 8'hFF) begin
+                            msix_sequential_access <= msix_sequential_access + 1'b1;
+                        end
+                    end else begin
+                        msix_sequential_access <= 8'h00;
+                    end
+                end else if ((wr_addr >= MSIX_PBA_OFFSET) && (wr_addr < MSIX_PBA_OFFSET + 32'h00001000)) begin
+                    // MSI-X PBA访问
+                    msix_pba_access_detected <= 1'b1;
+                    msix_table_access_history <= {msix_table_access_history[14:0], 1'b0};
+                end else begin
+                    // 非MSI-X表区域访问
+                    msix_table_access_flag <= 1'b0;
+                end
+            end
+            
+            // 读取访问也要跟踪
+            if (rd_req_valid) begin
+                if ((rd_req_addr >= MSIX_TABLE_OFFSET) && (rd_req_addr < MSIX_TABLE_OFFSET + 32'h00001000)) begin
+                    msix_table_access_flag <= 1'b1;
+                    msix_table_read_addr <= rd_req_addr;
+                    msix_table_access_history <= {msix_table_access_history[14:0], 1'b1};
+                    
+                    // 更新访问计数
+                    msix_access_count <= msix_access_count + 1'b1;
+                    
+                    // 跟踪连续访问
+                    if (msix_table_read_addr + 4 == rd_req_addr) begin
+                        if (msix_sequential_access < 8'hFF) begin
+                            msix_sequential_access <= msix_sequential_access + 1'b1;
+                        end
+                    end else begin
+                        msix_sequential_access <= 8'h00;
+                    end
+                end else if ((rd_req_addr >= MSIX_PBA_OFFSET) && (rd_req_addr < MSIX_PBA_OFFSET + 32'h00001000)) begin
+                    // PBA读取访问
+                    msix_pba_access_detected <= 1'b1;
+                    msix_table_access_history <= {msix_table_access_history[14:0], 1'b0};
+                end
+            end
+            
+            // 复位检测标志 - 延迟清除以允许状态机响应
+            if (msix_pba_access_detected && (msix_table_access_history == 16'h0000)) begin
+                msix_pba_access_detected <= 1'b0;
+            end
+        end
+    end
+
+    // 中断向量管理和状态机 - 添加在现有代码后
+    // 中断向量状态机 - 管理每个中断向量的生命周期
+    // 添加在700行左右，根据具体实现位置调整
+    always @(posedge clk) begin
+        if (rst) begin
+            // 重置所有向量状态
+            for (int i = 0; i < 16; i++) begin
+                msix_state[i] <= MSIX_STATE_IDLE;
+                msix_active_counter[i] <= 8'h00;
+            end
+            
+            // 重置PBA位和控制标志
+            msix_pba_bits <= 64'h0000000000000000;
+            msix_pending_mask <= 16'h0000;
+            msix_interrupt_valid <= 1'b0;
+            msix_interrupt_error <= 1'b0;
+            msix_throttle_counter <= 8'h00;
+        end else begin
+            // 中断限流计数器处理
+            if (msix_throttle_counter > 0) begin
+                msix_throttle_counter <= msix_throttle_counter - 1'b1;
+            end
+            
+            // 处理每个中断向量的状态
+            for (int i = 0; i < 16; i++) begin
+                case (msix_state[i])
+                    MSIX_STATE_IDLE: begin
+                        // 空闲状态 - 检查是否需要触发中断
+                        if (msix_pending_mask[i] && msix_vector_enable[i] && msix_enabled && !msix_masked) begin
+                            // 有挂起中断且向量已启用，转换到挂起状态
+                            msix_state[i] <= MSIX_STATE_PENDING;
+                            msix_active_counter[i] <= 8'h01; // 初始化活跃计数器
+                            
+                            // 设置PBA位
+                            msix_pba_bits[i] <= 1'b1;
+                        end else begin
+                            // 保持空闲状态
+                            msix_active_counter[i] <= 8'h00;
+                            msix_pba_bits[i] <= 1'b0;
+                        end
+                    end
+                    
+                    MSIX_STATE_PENDING: begin
+                        // 挂起状态 - 准备发送中断
+                        if (!msix_interrupt_valid && (msix_throttle_counter == 0)) begin
+                            // 中断总线空闲，可以发送中断
+                            msix_state[i] <= MSIX_STATE_ACTIVE;
+                            msix_interrupt_valid <= 1'b1;
+                            msix_interrupt_addr <= msix_last_addr[i];
+                            msix_interrupt_data <= msix_last_data[i];
+                            msix_throttle_counter <= msix_throttle_threshold; // 设置限流计数器
+                            
+                            // 更新统计信息
+                            msix_vector_stats[i] <= msix_vector_stats[i] + 1'b1;
+                        end else begin
+                            // 继续等待中断总线空闲
+                            msix_active_counter[i] <= msix_active_counter[i] + 1'b1;
+                            
+                            // 超时检测 - 如果等待太久，进入恢复状态
+                            if (msix_active_counter[i] >= 8'hF0) begin
+                                msix_state[i] <= MSIX_STATE_RECOVERY;
+                                msix_interrupt_error <= 1'b1; // 指示中断错误
+                            end
+                        end
+                    end
+                    
+                    MSIX_STATE_ACTIVE: begin
+                        // 活跃状态 - 中断正在发送
+                        msix_interrupt_valid <= 1'b0; // 复位中断有效信号
+                        msix_pending_mask[i] <= 1'b0; // 清除挂起标志
+                        msix_state[i] <= MSIX_STATE_IDLE; // 返回空闲状态
+                        
+                        // 清除PBA位 - 中断已被发送
+                        msix_pba_bits[i] <= 1'b0;
+                    end
+                    
+                    MSIX_STATE_RECOVERY: begin
+                        // 恢复状态 - 处理中断错误
+                        msix_interrupt_error <= 1'b0; // 清除错误标志
+                        msix_pending_mask[i] <= 1'b0; // 清除挂起标志
+                        msix_pba_bits[i] <= 1'b0;     // 清除PBA位
+                        msix_active_counter[i] <= 8'h00; // 重置计数器
+                        msix_state[i] <= MSIX_STATE_IDLE; // 返回空闲状态
+                    end
+                endcase
+            end
+            
+            // 处理PBA访问 - 当软件读取PBA寄存器时可能会清除挂起位
+            if (msix_pba_access_detected) begin
+                // 在高级模式下，读取PBA会影响挂起位状态
+                if (msix_advanced_mode) begin
+                    // 对于已读取的PBA位，检查并可能清除挂起状态
+                    for (int i = 0; i < 16; i++) begin
+                        if (msix_pba_bits[i] && (msix_state[i] == MSIX_STATE_PENDING)) begin
+                            // 将PBA位延迟一个周期清除 - 仿真实际硬件行为
+                            msix_pba_bits[i] <= 1'b0;
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    // 扩展的MSI-X处理功能
+    // 在中断触发函数或模块中添加
+    task trigger_msix_interrupt;
+        input [3:0] vector;
+        begin
+            // 设置中断挂起标志
+            msix_pending_mask[vector] <= 1'b1;
+        end
+    endtask
+
+    // 处理传入的PCIe事件，生成适当的MSI-X中断
+    task process_pcie_event;
+        input [7:0] event_type;
+        input [7:0] event_data;
+        begin
+            case (event_type)
+                8'h01: begin // 配置空间访问事件
+                    trigger_msix_interrupt(4'h0); // 使用向量0
+                end
+                
+                8'h02: begin // 错误事件
+                    trigger_msix_interrupt(4'h1); // 使用向量1
+                    
+                    // 更新错误状态寄存器
+                    vmd_error_status <= vmd_error_status | (32'h00000001 << event_data[3:0]);
+                end
+                
+                8'h03: begin // DMA完成事件
+                    trigger_msix_interrupt(4'h2); // 使用向量2
+                end
+                
+                8'h04: begin // 控制器状态变化
+                    if (event_data[0]) begin // 就绪状态变化
+                        trigger_msix_interrupt(4'h3); // 使用向量3
+                    end
+                end
+                
+                default: begin
+                    // 未知事件类型 - 可以记录或忽略
+                end
+            endcase
+        end
+    endtask
 
 endmodule

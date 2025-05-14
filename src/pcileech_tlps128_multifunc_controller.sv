@@ -38,6 +38,24 @@ module pcileech_tlps128_multifunc_controller(
     input  [4:0]            pcie_device_number,
     input  [2:0]            pcie_function_number,
     
+    // BDF路由控制接口
+    input  [7:0]           max_functions,       // 最大支持的功能数
+    input  [2:0]           active_function_id,  // 当前活跃功能ID
+    output [2:0]           current_function_out, // 输出当前功能ID
+    
+    // 多功能路由状态接口
+    output [7:0]           function_status,     // 功能状态输出
+    output reg             function_change_pending, // 功能切换挂起
+    
+    // 中断路由接口
+    input                  msix_valid_in,      // MSI-X中断有效输入
+    input  [63:0]          msix_addr_in,       // MSI-X中断地址输入
+    input  [31:0]          msix_data_in,       // MSI-X中断数据输入
+    output                 msix_valid_out,     // MSI-X中断有效输出
+    output [63:0]          msix_addr_out,      // MSI-X中断地址输出
+    output [31:0]          msix_data_out,      // MSI-X中断数据输出
+    output [2:0]           msix_source_func,   // 中断源功能ID
+    
     // 调试和状态输出
     output [31:0]           debug_status,
     
@@ -50,6 +68,33 @@ module pcileech_tlps128_multifunc_controller(
     reg [7:0]  active_function_mask;    // 活动功能掩码
     reg [31:0] access_counter;          // 访问计数器
     reg [31:0] function_access_stats [0:7]; // 各功能访问统计
+    
+    // BDF路由相关寄存器
+    reg [7:0]  routing_table[0:7]; // 路由表 - 存储目标功能映射
+    reg [7:0]  function_access_mask;  // 功能访问控制掩码
+    reg [7:0]  function_enable_status; // 功能启用状态
+    reg [7:0]  function_ready_status;  // 功能就绪状态
+    reg [2:0]  function_route_target;  // 当前路由目标功能
+    
+    // 功能状态转换追踪
+    reg [2:0]  previous_function;     // 上一个活动功能
+    reg [7:0]  function_switch_counter; // 功能切换计数器
+    reg        function_switch_in_progress; // 功能切换进行中标志
+    
+    // BDF路由策略控制
+    reg [1:0]  routing_policy;        // 路由策略： 0=固定, 1=轮询, 2=负载均衡, 3=主/备
+    reg [7:0]  load_balance_counter;  // 负载均衡计数器
+    reg [2:0]  primary_function_id;   // 主功能ID (用于主/备模式)
+    reg [2:0]  backup_function_id;    // 备份功能ID (用于主/备模式)
+    reg        use_backup_function;   // 使用备份功能标志
+    
+    // 中断路由控制
+    reg        interrupt_routing_enable; // 中断路由使能
+    reg [7:0]  interrupt_route_mask;    // 中断路由掩码
+    reg [2:0]  last_interrupt_function; // 上次中断功能ID
+    
+    // 功能优先级
+    reg [2:0]  function_priority[0:7]; // 每个功能的优先级
     
     // 初始化多功能配置
     initial begin
@@ -65,6 +110,34 @@ module pcileech_tlps128_multifunc_controller(
         for (int i = 0; i < 8; i++) begin
             function_access_stats[i] = 32'h0;
         end
+        
+        // BDF路由相关寄存器初始化
+        for (int i = 0; i < 8; i++) begin
+            routing_table[i] = i;    // 默认直通路由
+            function_priority[i] = 3'h7 - i; // 默认优先级
+        end
+        function_access_mask = 8'hFF;  // 默认允许访问所有功能
+        function_enable_status = 8'h01; // 默认只启用功能0
+        function_ready_status = 8'h01;  // 默认只有功能0就绪
+        function_route_target = 3'h0;   // 默认路由到功能0
+        
+        // 功能状态转换追踪初始化
+        previous_function = 3'h0;
+        function_switch_counter = 8'h00;
+        function_switch_in_progress = 1'b0;
+        function_change_pending = 1'b0;
+        
+        // BDF路由策略控制初始化
+        routing_policy = 2'b00;        // 默认使用固定路由
+        load_balance_counter = 8'h00;
+        primary_function_id = 3'h0;    // 功能0为主功能
+        backup_function_id = 3'h1;     // 功能1为备份功能
+        use_backup_function = 1'b0;    // 默认使用主功能
+        
+        // 中断路由控制初始化
+        interrupt_routing_enable = 1'b0; // 默认禁用中断路由
+        interrupt_route_mask = 8'h01;    // 默认只路由功能0中断
+        last_interrupt_function = 3'h0;  // 初始化上次中断功能
     end
     
     // 从TLP提取的请求信息
@@ -195,5 +268,180 @@ module pcileech_tlps128_multifunc_controller(
     
     // 调试信息输出 - 可以观察每个功能的访问情况
     assign debug_status = function_access_stats[current_function];
+
+    // 输出赋值
+    assign current_function_out = current_function;
+    assign function_status = function_ready_status;
+    assign msix_valid_out = msix_valid_in && interrupt_routing_enable;
+    assign msix_addr_out = msix_addr_in;
+    assign msix_data_out = msix_data_in;
+    assign msix_source_func = last_interrupt_function;
+
+    // 在功能切换检测逻辑之后添加
+    // BDF路由和功能状态管理
+    always @(posedge clk_pcie) begin
+        if (rst) begin
+            // 重置所有路由和状态控制
+            current_function <= 3'h0;
+            function_route_target <= 3'h0;
+            function_change_pending <= 1'b0;
+            function_switch_in_progress <= 1'b0;
+            function_switch_counter <= 8'h00;
+            previous_function <= 3'h0;
+            
+            // 重置功能状态
+            function_enable_status <= 8'h01; // 只启用功能0
+            function_ready_status <= 8'h01;  // 只有功能0就绪
+            
+            // 重置中断路由
+            last_interrupt_function <= 3'h0;
+            
+            // 重置路由策略控制
+            routing_policy <= 2'b00;
+            load_balance_counter <= 8'h00;
+            use_backup_function <= 1'b0;
+        end else begin
+            // 功能切换处理
+            if (current_function != active_function_id) begin
+                // 检测功能ID变化
+                if (!function_switch_in_progress) begin
+                    // 开始功能切换过程
+                    function_switch_in_progress <= 1'b1;
+                    function_change_pending <= 1'b1;
+                    previous_function <= current_function;
+                    function_switch_counter <= 8'h00;
+                end else begin
+                    // 切换过程中
+                    function_switch_counter <= function_switch_counter + 1'b1;
+                    
+                    // 在足够的延迟后完成切换
+                    if (function_switch_counter >= 8'h10) begin
+                        current_function <= active_function_id;
+                        function_switch_in_progress <= 1'b0;
+                        function_change_pending <= 1'b0;
+                        
+                        // 更新路由表
+                        routing_table[previous_function] <= {5'h00, active_function_id};
+                    end
+                end
+            end
+            
+            // 基于当前路由策略更新路由目标
+            case (routing_policy)
+                2'b00: begin // 固定路由
+                    // 保持当前路由目标不变
+                    function_route_target <= current_function;
+                end
+                
+                2'b01: begin // 轮询路由
+                    // 在每次访问后轮换到下一个启用的功能
+                    if (pcie_rx_req_valid) begin
+                        // 查找下一个启用的功能
+                        for (int i = 1; i <= max_functions; i++) begin
+                            // 计算下一个功能索引 (循环)
+                            reg [2:0] next_func = (function_route_target + i) % max_functions;
+                            
+                            // 检查该功能是否启用
+                            if (function_enable_status[next_func]) begin
+                                function_route_target <= next_func;
+                                break;
+                            end
+                        end
+                    end
+                end
+                
+                2'b10: begin // 负载均衡路由
+                    // 基于访问计数进行负载均衡
+                    load_balance_counter <= load_balance_counter + 1'b1;
+                    
+                    if (load_balance_counter == 8'hFF) begin
+                        // 找到访问次数最少的功能
+                        reg [31:0] min_access_count = 32'hFFFFFFFF;
+                        reg [2:0]  min_access_func = 3'h0;
+                        
+                        for (int i = 0; i < max_functions; i++) begin
+                            if (function_enable_status[i] && function_access_stats[i] < min_access_count) begin
+                                min_access_count = function_access_stats[i];
+                                min_access_func = i[2:0];
+                            end
+                        end
+                        
+                        // 更新路由目标
+                        function_route_target <= min_access_func;
+                        load_balance_counter <= 8'h00;
+                    end
+                end
+                
+                2'b11: begin // 主/备路由
+                    if (use_backup_function) begin
+                        function_route_target <= backup_function_id;
+                    end else begin
+                        function_route_target <= primary_function_id;
+                    end
+                    
+                    // 自动检测主功能是否仍然有效
+                    if (!function_ready_status[primary_function_id] && !use_backup_function) begin
+                        use_backup_function <= 1'b1; // 切换到备份功能
+                    end else if (function_ready_status[primary_function_id] && use_backup_function) begin
+                        // 主功能恢复，但继续使用备份直到明确切换回来
+                    end
+                end
+            endcase
+            
+            // 中断路由处理
+            if (msix_valid_in && interrupt_routing_enable) begin
+                last_interrupt_function <= current_function;
+            end
+            
+            // 功能状态更新 - 根据访问和错误状态动态更新
+            // 这里简化为基于访问统计的可用性评估
+            for (int i = 0; i < max_functions; i++) begin
+                // 只有启用的功能才能处于就绪状态
+                if (function_enable_status[i]) begin
+                    // 简单的就绪状态评估
+                    if (function_access_stats[i] > 0) begin
+                        function_ready_status[i] <= 1'b1;
+                    end
+                end else begin
+                    function_ready_status[i] <= 1'b0;
+                end
+            end
+        end
+    end
+
+    // 路由表更新 - 当接收到配置写入时
+    // 在pcie_rx_req_valid处理部分增加
+    always @(posedge clk_pcie) begin
+        if (pcie_rx_req_valid && pcie_rx_wren) begin
+            // 检测特殊路由配置访问
+            if (pcie_rx_addr[9:2] == 8'hF8 && pcie_rx_func == 3'h0) begin
+                // 路由策略配置寄存器 (假设定义在偏移0x3E0)
+                routing_policy <= pcie_rx_data[1:0];
+                interrupt_routing_enable <= pcie_rx_data[8];
+            end
+            
+            // 功能启用控制寄存器 (假设定义在偏移0x3E4)
+            if (pcie_rx_addr[9:2] == 8'hF9 && pcie_rx_func == 3'h0) begin
+                // 限制只能启用最大数量的功能
+                function_enable_status <= pcie_rx_data[7:0] & ((1 << max_functions) - 1);
+            end
+            
+            // 主/备功能配置寄存器 (假设定义在偏移0x3E8)
+            if (pcie_rx_addr[9:2] == 8'hFA && pcie_rx_func == 3'h0) begin
+                primary_function_id <= pcie_rx_data[2:0];
+                backup_function_id <= pcie_rx_data[10:8];
+                use_backup_function <= pcie_rx_data[16];
+            end
+        end
+    end
+
+    // 功能ID转换 - 将外部BDF转换为内部功能ID
+    // 在pcileech_mem_wrap_multi的function_id接口前添加
+    wire [2:0] internal_function_id;
+    assign internal_function_id = (pcie_rx_addr[9:2] >= 8'hF8) ? 
+                                current_function : 
+                                (routing_policy == 2'b00) ?
+                                    current_function :
+                                    function_route_target;
 
 endmodule 

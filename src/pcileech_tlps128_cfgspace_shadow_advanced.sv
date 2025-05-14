@@ -11,7 +11,6 @@
 `timescale 1ns / 1ps
 
 `include "pcileech_header.svh"
-`include "pcileech_rw1c_register.sv"
 
 module pcileech_tlps128_cfgspace_shadow_advanced(
     input                   rst,

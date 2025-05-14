@@ -44,6 +44,7 @@ module pcileech_bar_impl_zerowrite4k(
     // 内部状态和计数器
     bit [87:0]  drd_req_ctx;
     bit         drd_req_valid;
+    bit [31:0]  mem[1024];        // 实际存储区域
     wire [31:0] doutb;
     reg [31:0]  last_read_addr;
     reg [7:0]   access_counter;
@@ -79,6 +80,34 @@ module pcileech_bar_impl_zerowrite4k(
     reg [31:0]  access_pattern[0:3];      // 访问模式记录
     reg [1:0]   pattern_index;            // 模式索引
     
+    // 高级内存保护特性
+    reg [31:0]  protected_mem[0:7];       // 特殊保护内存区域
+    reg [31:0]  shadow_mem[0:7];          // 影子内存区域
+    reg [7:0]   protection_mask;          // 内存保护掩码
+    reg         memory_protection_active;  // 内存保护激活标志
+    reg [2:0]   protection_level;         // 保护级别 (0-7)
+    
+    // 高级欺骗行为控制
+    reg [1:0]   deception_strategy;       // 欺骗策略：0=最小，1=标准，2=高级，3=自适应
+    reg [31:0]  deception_seed;           // 欺骗随机种子
+    reg [15:0]  deception_counter;        // 欺骗计数器
+    reg [31:0]  legitimate_pattern[0:3];  // 合法访问模式
+    reg         legitimate_mode;          // 合法访问模式标志
+    
+    // 反分析特性
+    reg [15:0]  analysis_detection_mask;  // 分析检测掩码
+    reg [31:0]  last_n_access[0:3];       // 最近N次访问记录
+    reg [1:0]   access_index;             // 访问索引
+    reg         anti_analysis_active;     // 反分析模式激活
+    reg [7:0]   trigger_threshold;        // 触发阈值
+    
+    // 多级别响应策略
+    reg [2:0]   response_level;           // 响应级别 (0-7)
+    reg [31:0]  response_values[0:7];     // 预定义响应值
+    reg [31:0]  benign_patterns[0:7];     // 良性访问模式
+    reg [7:0]   response_flags;           // 响应标志
+    reg         dynamic_response_enabled; // 动态响应使能
+    
     // 关键区域定义 - 这些区域的写入将被实际存储
     localparam CRITICAL_REGION_START = 32'h00000000;
     localparam CRITICAL_REGION_END   = 32'h0000003F; // 64字节的关键区域
@@ -94,7 +123,8 @@ module pcileech_bar_impl_zerowrite4k(
     typedef enum logic [1:0] {
         NORMAL,         // 正常响应模式
         CAMOUFLAGE,     // 伪装模式 - 返回看似合法的数据
-        DECEPTIVE       // 欺骗模式 - 返回误导性数据
+        DECEPTIVE,      // 欺骗模式 - 返回误导性数据
+        INTELLIGENT     // 智能响应模式 - 学习并模拟合法行为
     } response_mode_t;
     
     response_mode_t current_response_mode;
@@ -137,6 +167,57 @@ module pcileech_bar_impl_zerowrite4k(
         debounce_counter = 4'h0;
         stable_access = 1'b0;
         timing_guard = 8'h0;
+        
+        // 高级内存保护特性初始化
+        protection_mask = 8'hFF;
+        memory_protection_active = 1'b1;
+        protection_level = 3'h3;
+        for (int i = 0; i < 8; i++) begin
+            protected_mem[i] = 32'h0;
+            shadow_mem[i] = 32'h0;
+        end
+        
+        // 高级欺骗行为控制初始化
+        deception_strategy = 2'b01; // 标准欺骗策略
+        deception_seed = 32'h12AB34CD;
+        deception_counter = 16'h0;
+        legitimate_mode = 1'b0;
+        for (int i = 0; i < 4; i++) begin
+            legitimate_pattern[i] = 32'h0;
+        end
+        
+        // 反分析特性初始化
+        analysis_detection_mask = 16'h0000;
+        access_index = 2'b00;
+        anti_analysis_active = 1'b0;
+        trigger_threshold = 8'h40;
+        for (int i = 0; i < 4; i++) begin
+            last_n_access[i] = 32'h0;
+        end
+        
+        // 多级别响应策略初始化
+        response_level = 3'h0;
+        response_flags = 8'h00;
+        dynamic_response_enabled = 1'b1;
+        for (int i = 0; i < 8; i++) begin
+            response_values[i] = 32'h01010101 * (i + 1);
+            benign_patterns[i] = 32'h0;
+        end
+        
+        // 初始化内存区域
+        for (int i = 0; i < 1024; i++) begin
+            mem[i] = 32'h0;
+        end
+        
+        // 设置一些预定义的内存值，使其看起来像合法设备
+        mem[0] = 32'h12345678;  // 设备ID
+        mem[1] = 32'h87654321;  // 厂商ID
+        mem[2] = 32'h00010002;  // 版本号
+        mem[3] = 32'h00000001;  // 控制寄存器
+        mem[4] = 32'h00000000;  // 状态寄存器
+        mem[5] = 32'h00000100;  // 大小寄存器
+        mem[6] = 32'h00000000;  // 命令寄存器
+        mem[7] = 32'h00000000;  // 响应寄存器
     end
     
     // 复位逻辑 - 同步复位
@@ -179,6 +260,38 @@ module pcileech_bar_impl_zerowrite4k(
             debounce_counter <= 4'h0;
             stable_access <= 1'b0;
             timing_guard <= 8'h0;
+            
+            // 高级内存保护特性复位
+            protection_mask <= 8'hFF;
+            memory_protection_active <= 1'b1;
+            protection_level <= 3'h3;
+            
+            // 高级欺骗行为控制复位
+            deception_strategy <= 2'b01;
+            deception_seed <= 32'h12AB34CD;
+            deception_counter <= 16'h0;
+            legitimate_mode <= 1'b0;
+            
+            // 反分析特性复位
+            analysis_detection_mask <= 16'h0000;
+            access_index <= 2'b00;
+            anti_analysis_active <= 1'b0;
+            trigger_threshold <= 8'h40;
+            
+            // 多级别响应策略复位
+            response_level <= 3'h0;
+            response_flags <= 8'h00;
+            dynamic_response_enabled <= 1'b1;
+            
+            // 设置一些预定义的内存值，使其看起来像合法设备
+            mem[0] <= 32'h12345678;  // 设备ID
+            mem[1] <= 32'h87654321;  // 厂商ID
+            mem[2] <= 32'h00010002;  // 版本号
+            mem[3] <= 32'h00000001;  // 控制寄存器
+            mem[4] <= 32'h00000000;  // 状态寄存器
+            mem[5] <= 32'h00000100;  // 大小寄存器
+            mem[6] <= 32'h00000000;  // 命令寄存器
+            mem[7] <= 32'h00000000;  // 响应寄存器
         end
     end
     
@@ -219,12 +332,18 @@ module pcileech_bar_impl_zerowrite4k(
             access_pattern[pattern_index] <= rd_req_addr;
             pattern_index <= pattern_index + 1;
             
+            // 更新最近访问记录
+            last_n_access[access_index] <= rd_req_addr;
+            access_index <= access_index + 1;
+            
             // 检测连续地址访问（扫描行为）
             if (rd_req_addr == last_access_addr + 4 || rd_req_addr == last_access_addr + 8) begin
                 sequential_access_count <= sequential_access_count + 1;
                 if (sequential_access_count >= 4'h8) begin
                     scan_detected <= 1'b1;
-                    // 当检测到扫描时切换到欺骗模式
+                    // 当检测到扫描时启用反分析模式
+                    anti_analysis_active <= 1'b1;
+                    // 切换到欺骗模式
                     current_response_mode <= DECEPTIVE;
                 end
             end else begin
@@ -240,174 +359,198 @@ module pcileech_bar_impl_zerowrite4k(
             if (access_frequency > 16'h0100 && access_frequency < 16'h0300) begin
                 current_response_mode <= CAMOUFLAGE;
             end
+            
+            // 反分析检测逻辑 - 基于访问模式识别常见分析工具
+            if (anti_analysis_active) begin
+                // 检测分析工具特征模式
+                if ((rd_req_addr & 32'hFFFFFFF0) == 32'h00000000 && 
+                    (last_access_addr & 32'hFFFFFFF0) == 32'h00000010) begin
+                    // 可能是分析工具 - 标记并提高响应级别
+                    analysis_detection_mask <= analysis_detection_mask | 16'h0001;
+                    if (response_level < 3'h7) begin
+                        response_level <= response_level + 1;
+                    end
+                end
+            end
         end else begin
             // 衰减访问频率计数
             if (access_frequency > 0) begin
                 access_frequency <= access_frequency - 1;
             end
         end
+        
+        // 高级欺骗行为计数器
+        if (deception_counter < 16'hFFFF) begin
+            deception_counter <= deception_counter + 1;
+        end
+        
+        // 周期性更新欺骗种子
+        if (deception_counter == 16'hFF00) begin
+            deception_seed <= {deception_seed[30:0], deception_seed[31] ^ deception_seed[27]};
+        end
+        
+        // 基于阈值和策略动态调整响应模式
+        if (deception_counter >= 16'h8000 && deception_strategy == 2'b11) begin
+            // 自适应策略 - 周期性地改变响应模式
+            case (current_response_mode)
+                NORMAL: current_response_mode <= CAMOUFLAGE;
+                CAMOUFLAGE: current_response_mode <= DECEPTIVE;
+                DECEPTIVE: current_response_mode <= INTELLIGENT;
+                INTELLIGENT: current_response_mode <= NORMAL;
+            endcase
+            deception_counter <= 16'h0;
+        end
+        
+        // 学习合法访问模式 - 在非扫描情况下
+        if (rd_req_valid && !scan_detected && sequential_access_count == 0) begin
+            if (access_frequency < 16'h0020) begin
+                // 低频访问可能是正常操作 - 记录为合法模式
+                legitimate_pattern[pattern_index] <= rd_req_addr;
+                legitimate_mode <= 1'b1;
+            end
+        end
     end
     
-    // 读取请求处理 - 标准响应策略
+    // 动态响应值生成 - 基于当前模式和状态
     always @(posedge clk) begin
-        drd_req_ctx <= rd_req_ctx;
-        drd_req_valid <= rd_req_valid;
-        rd_rsp_ctx <= drd_req_ctx;
-        rd_rsp_valid <= drd_req_valid;
-        
-        // 记录最后读取的地址
-        if(rd_req_valid) begin
+        if (rd_req_valid) begin
+            // 更新上一次读取的地址
             last_read_addr <= rd_req_addr;
-            access_counter <= access_counter + 1;
             
-            // 更新响应种子以增加变化性
-            response_seed <= {response_seed[30:0], response_seed[31] ^ response_seed[27]};
-        end
-    end
-    
-    // 写入请求处理 - 只有关键区域的写入会被实际存储
-    wire write_enable = wr_valid && (is_critical_region || !stealth_mode_active);
-    
-    // 使用BRAM存储数据
-    // BRAM访问控制和保护逻辑
-    always @(posedge clk) begin
-        if(rst) begin
-            bram_addr_a <= 10'h0;
-            bram_addr_b <= 10'h0;
-            bram_din_a <= 32'h0;
-            bram_en_a <= 1'b0;
-            bram_we_a <= 4'h0;
-            bram_en_b <= 1'b0;
-            access_timeout <= 16'h0;
-            counter_overflow <= 1'b0;
-            error_status <= 4'h0;
-        end else begin
-            // 访问超时检测
-            if(access_timeout > 0) begin
-                access_timeout <= access_timeout - 1;
-            end
-            
-            // 写访问控制
-            if(wr_valid && !counter_overflow) begin
-                // 检查是否在关键区域内
-                if(is_critical_region) begin
-                    bram_addr_a <= wr_addr[11:2];
-                    bram_din_a <= wr_data;
-                    bram_en_a <= 1'b1;
-                    bram_we_a <= wr_be;
-                    access_timeout <= 16'hFFFF; // 设置访问超时
-                end else begin
-                    // 非关键区域写入被忽略
-                    bram_en_a <= 1'b0;
-                    bram_we_a <= 4'h0;
-                end
+            // 更新访问计数器，带溢出保护
+            if (access_counter < 8'hFE) begin
+                access_counter <= access_counter + 1;
             end else begin
-                bram_en_a <= 1'b0;
-                bram_we_a <= 4'h0;
-            end
-            
-            // 读访问控制
-            if(rd_req_valid && !counter_overflow) begin
-                bram_addr_b <= rd_req_addr[11:2];
-                bram_en_b <= 1'b1;
-                access_timeout <= 16'hFFFF; // 设置访问超时
-            end else begin
-                bram_en_b <= 1'b0;
-            end
-            
-            // 计数器溢出保护
-            if(access_counter == 8'hFF) begin
-                counter_overflow <= 1'b1;
                 counter_overflow_flag <= 1'b1;
-                error_status[0] <= 1'b1; // 设置溢出错误标志
             end
             
-            // 访问超时保护
-            if(access_timeout == 16'h0) begin
-                error_status[1] <= 1'b1; // 设置超时错误标志
-            end
-        end
-    end
-    
-    // 读取响应数据选择 - 根据当前响应模式生成不同的响应值
-    always @(posedge clk) begin
-        // 在当前时钟周期计算响应值
-        reg [31:0] current_response;
-        
-        if(rd_rsp_valid) begin
-            case(current_response_mode)
+            // 根据响应模式生成响应值
+            case (current_response_mode)
                 NORMAL: begin
-                    // 基本模式：地址混合种子值生成响应
-                    temp_response = {last_read_addr[7:0], last_read_addr[15:8], 8'hA5, 8'h5A};
-                    current_response = temp_response ^ (access_counter << 8) ^ response_seed;
+                    // 正常模式 - 从实际内存读取或返回固定值
+                    temp_response <= mem[rd_req_addr[11:2]];
                 end
                 
                 CAMOUFLAGE: begin
-                    // 伪装模式：返回看似合法的设备ID或寄存器值
-                    if (last_read_addr[7:0] == 8'h00) begin
-                        // 设备ID和厂商ID
-                        current_response = 32'h10DE8086; // 混合NVIDIA和Intel ID
-                    end else if (last_read_addr[7:0] == 8'h04) begin
-                        // 状态和命令寄存器
-                        current_response = 32'h00000407; // 典型的PCIe设备状态
-                    end else if (last_read_addr[7:0] >= 8'h10 && last_read_addr[7:0] <= 8'h24) begin
-                        // BAR地址区域
-                        current_response = 32'hFFFE0000 | {last_read_addr[7:0], 24'h0};
+                    // 伪装模式 - 返回看似合法但可能不是真实值的数据
+                    if (rd_req_addr[11:2] < 16) begin
+                        // 低地址区域返回合法值
+                        temp_response <= mem[rd_req_addr[11:2]];
                     end else begin
-                        // 其他区域返回看似有效但无害的值
-                        current_response = 32'h01000000 | (last_read_addr[15:0] << 8);
+                        // 为高地址区域生成随机但一致的响应
+                        temp_response <= response_values[response_level] ^ (rd_req_addr & 32'h0000000F);
                     end
                 end
                 
                 DECEPTIVE: begin
-                    // 欺骗模式：返回具有误导性的值，显示为不同类型的设备
-                    if (scan_detected) begin
-                        // 对于检测到的扫描，返回全零以避免触发检测
-                        current_response = 32'h00000000;
-                    end else begin
-                        // 返回看似合法但包含特殊指纹的值
-                        current_response = 32'hDEADC0DE ^ (last_read_addr[11:0] << 16);
-                    end
+                    // 欺骗模式 - 返回误导性数据
+                    // 这里使用复杂的混合算法生成看似合法但无实际意义的数据
+                    temp_response <= deception_seed ^ {rd_req_addr[7:0], rd_req_addr[15:8], rd_req_addr[23:16], rd_req_addr[31:24]};
                 end
                 
-                default: begin
-                    // 默认行为与NORMAL相同
-                    temp_response = {last_read_addr[7:0], last_read_addr[15:8], 8'hA5, 8'h5A};
-                    current_response = temp_response ^ (access_counter << 8);
+                INTELLIGENT: begin
+                    // 智能模式 - 基于学习到的合法访问模式返回数据
+                    if (legitimate_mode && (rd_req_addr == legitimate_pattern[0] || 
+                                          rd_req_addr == legitimate_pattern[1] ||
+                                          rd_req_addr == legitimate_pattern[2] ||
+                                          rd_req_addr == legitimate_pattern[3])) begin
+                        // 对合法访问模式返回真实数据
+                        temp_response <= mem[rd_req_addr[11:2]];
+                    end else begin
+                        // 对其他访问返回混合数据
+                        temp_response <= (rd_req_addr ^ response_seed) | 32'h01010101;
+                    end
                 end
             endcase
             
-            // 对于关键区域的读取，可以返回实际存储的值
-            if (last_read_addr >= CRITICAL_REGION_START && last_read_addr <= CRITICAL_REGION_END && stealth_mode_active) begin
-                // 使用BRAM数据而不是动态生成的值
-                current_response = doutb;
+            // 特殊区域始终返回真实数据
+            if (rd_req_addr < 32'h00000040) begin
+                temp_response <= mem[rd_req_addr[11:2]];
             end
             
-            // 更新动态响应值并直接设置输出
-            dynamic_response_value <= current_response;
-            rd_rsp_data <= current_response;
+            // 记录当前响应模式
+            previous_response_mode <= current_response_mode;
         end
     end
     
-    // BRAM实例化
-    bram_bar_zero4k 
-    #(
-        .RAM_WIDTH(32),
-        .RAM_DEPTH(1024)
-    )
-    i_bram_bar_zero4k
-    (
-        // Port A - write:
-        .addra  (bram_addr_a),
-        .clka   (clk),
-        .dina   (bram_din_a),
-        .ena    (bram_en_a),
-        .wea    (bram_we_a),
-        // Port B - read (2 CLK latency):
-        .addrb  (bram_addr_b),
-        .clkb   (clk),
-        .doutb  (doutb),
-        .enb    (bram_en_b)
-    );
+    // 写入处理 - 关键区域的写入会被实际存储，其他区域可能被忽略
+    always @(posedge clk) begin
+        if (wr_valid) begin
+            // 增加访问计数，带溢出保护
+            if (access_counter < 8'hFE) begin
+                access_counter <= access_counter + 1;
+            end else begin
+                counter_overflow_flag <= 1'b1;
+            end
+            
+            // 检查写地址是否在关键区域内
+            if (is_critical_region || !stealth_mode_active) begin
+                // 关键区域的写入或非隐身模式，实际存储数据
+                case (wr_be)
+                    4'b0001: mem[wr_addr[11:2]][7:0]   <= wr_data[7:0];
+                    4'b0010: mem[wr_addr[11:2]][15:8]  <= wr_data[15:8];
+                    4'b0100: mem[wr_addr[11:2]][23:16] <= wr_data[23:16];
+                    4'b1000: mem[wr_addr[11:2]][31:24] <= wr_data[31:24];
+                    4'b0011: mem[wr_addr[11:2]][15:0]  <= wr_data[15:0];
+                    4'b1100: mem[wr_addr[11:2]][31:16] <= wr_data[31:16];
+                    4'b0111: mem[wr_addr[11:2]][23:0]  <= wr_data[23:0];
+                    4'b1110: begin
+                        mem[wr_addr[11:2]][31:8]  <= wr_data[31:8];
+                    end
+                    4'b1111: begin
+                        mem[wr_addr[11:2]]        <= wr_data;
+                    end
+                    default: begin
+                        // 不支持的写入掩码 - 部分写入
+                        if (wr_be[0]) mem[wr_addr[11:2]][7:0]   <= wr_data[7:0];
+                        if (wr_be[1]) mem[wr_addr[11:2]][15:8]  <= wr_data[15:8];
+                        if (wr_be[2]) mem[wr_addr[11:2]][23:16] <= wr_data[23:16];
+                        if (wr_be[3]) mem[wr_addr[11:2]][31:24] <= wr_data[31:24];
+                    end
+                endcase
+                
+                // 保存控制寄存器写入到受保护内存
+                if ((wr_addr & 32'hFFFFFFF0) == 32'h00000000) begin
+                    protected_mem[wr_addr[3:0]] <= wr_data;
+                end
+            end else begin
+                // 非关键区域写入 - 在隐身模式下只模拟写入
+                
+                // 这里可以根据需要模拟某些特定地址的写入响应
+                // 例如，更新状态寄存器的响应字段
+                if (wr_addr == 32'h00000007) begin
+                    mem[7] <= 32'h00000001; // 模拟命令已执行
+                end
+                
+                // 跟踪写入模式
+                if (memory_protection_active && protection_level >= 3'h2) begin
+                    // 高保护级别 - 记录写入尝试但不真正写入
+                    shadow_mem[wr_addr[3:0] & 7] <= wr_data;
+                    // 标记相应的保护掩码位
+                    protection_mask <= protection_mask | (1 << (wr_addr[3:0] & 7));
+                end
+            end
+        end
+    end
+    
+    // 输出逻辑 - 处理读取请求
+    always @(posedge clk) begin
+        drd_req_ctx <= rd_req_ctx;
+        drd_req_valid <= rd_req_valid;
+        
+        rd_rsp_ctx <= drd_req_ctx;
+        rd_rsp_valid <= drd_req_valid;
+        
+        if (drd_req_valid) begin
+            // 设置读取响应数据
+            rd_rsp_data <= temp_response;
+            
+            // 更新动态响应值 - 为下一次请求准备
+            dynamic_response_value <= temp_response ^ {dynamic_response_value[7:0], 
+                                                     dynamic_response_value[15:8], 
+                                                     dynamic_response_value[23:16], 
+                                                     dynamic_response_value[31:24]};
+        end
+    end
 
 endmodule

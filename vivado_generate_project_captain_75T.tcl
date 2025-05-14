@@ -118,6 +118,8 @@ set files [list \
  [file normalize "${origin_dir}/src/pcileech_tlps128_cfgspace_shadow_advanced.sv"]\
  [file normalize "${origin_dir}/src/pcileech_tlps128_monitor.sv"]\
  [file normalize "${origin_dir}/src/pcileech_tlps128_multifunc_controller.sv"]\
+ [file normalize "${origin_dir}/src/pcileech_bdf_router.sv"]\
+ [file normalize "${origin_dir}/src/pcileech_multifunc_integration.sv"]\
  [file normalize "${origin_dir}/src/pcileech_bar_impl_vmd_msix.sv"]\
  [file normalize "${origin_dir}/src/pcileech_bar_impl_zerowrite4k.sv"]\
  [file normalize "${origin_dir}/src/pcileech_mem_wrap_multi.sv"]\
@@ -215,6 +217,14 @@ set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
 set_property -name "file_type" -value "SystemVerilog" -objects $file_obj
 
 set file "src/pcileech_tlps128_multifunc_controller.sv"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "SystemVerilog" -objects $file_obj
+
+set file "src/pcileech_bdf_router.sv"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "SystemVerilog" -objects $file_obj
+
+set file "src/pcileech_multifunc_integration.sv"
 set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
 set_property -name "file_type" -value "SystemVerilog" -objects $file_obj
 
