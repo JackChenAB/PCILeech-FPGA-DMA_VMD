@@ -79,6 +79,19 @@ module pcileech_75t484_x1_vmd_top #(
     wire            pcie_clk;            // PCIe参考时钟
     wire            pcie_lnk_up;         // PCIe链路建立状态
     
+    // 定义缺失的信号和接口
+    wire [15:0]     pcie_id;             // PCIe ID
+    wire [31:0]     device_id_version;   // 设备ID和版本号
+    IfAXIS128       if_axis_tlps_rx();   // TLP接收接口
+    IfAXIS128       if_axis_tlps_tx();   // TLP发送接口
+    IfAXIS128       if_axis_tlps_tx_nouse(); // 未使用的TLP发送接口
+    IfAXIS128       if_axis_tlps_rx_mon(); // TLP监控接口
+    IfPCIeConfig    if_pcie_cfg();       // PCIe配置接口
+    wire [31:0]     pcie_status;         // PCIe状态信号
+    wire [7:0]      cfg_bus_number;      // 配置总线号
+    wire [4:0]      cfg_device_number;   // 配置设备号
+    wire [2:0]      cfg_function_number; // 配置功能号
+    
     // 数据传输接口
     IfPCIeFifoTlp   dfifo();             // TLP数据FIFO接口
     IfShadow2Fifo   dshadow2fifo();      // 配置空间影子FIFO接口
@@ -201,10 +214,6 @@ module pcileech_75t484_x1_vmd_top #(
     // -------------------------------------------------------------------------
     // 其他控制和调试接口
     // -------------------------------------------------------------------------
-    
-    wire [7:0]          cfg_bus_number;
-    wire [4:0]          cfg_device_number;
-    wire [2:0]          cfg_function_number;
     
     // -------------------------------------------------------------------------
     // TLP监控模块 - 用于调试TLP流量

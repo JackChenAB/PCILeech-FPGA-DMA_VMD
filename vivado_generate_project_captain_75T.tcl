@@ -1,6 +1,6 @@
 #
-# Vivado generated .tcl for creating the pcileech_captaindma_75t vivado project.
-# Run from within "Vivado Tcl Shell" with command: source vivado_generate_project_captaindma_75t.tcl -notrace
+# Vivado generated .tcl for creating the pcileech_captain_75T vivado project.
+# Run from within "Vivado Tcl Shell" with command: source vivado_generate_project_captain_75T.tcl -notrace
 #
 
 # Set the reference directory for source file relative paths (by default the value is script directory path)
@@ -12,7 +12,7 @@ if { [info exists ::origin_dir_loc] } {
 }
 
 # Set the project name
-set _xil_proj_name_ "pcileech_captaindma_75t"
+set _xil_proj_name_ "pcileech_captain_75T"
 
 # Use project name variable, if specified in the tcl shell
 if { [info exists ::user_project_name] } {
@@ -20,7 +20,7 @@ if { [info exists ::user_project_name] } {
 }
 
 variable script_file
-set script_file "vivado_generate_project_captaindma_75t.tcl"
+set script_file "vivado_generate_project_captain_75T.tcl"
 
 # Help information for this script
 proc print_help {} {
@@ -68,7 +68,7 @@ if { $::argc > 0 } {
 }
 
 # Set the directory path for the original project from where this script was exported
-set orig_proj_dir "[file normalize "$origin_dir/pcileech_captaindma_75t"]"
+set orig_proj_dir "[file normalize "$origin_dir/pcileech_captain_75T"]"
 
 # Create project
 create_project ${_xil_proj_name_} ./${_xil_proj_name_} -part xc7a75tfgg484-2
@@ -116,14 +116,58 @@ set files [list \
  [file normalize "${origin_dir}/src/pcileech_pcie_tlp_a7.sv"]\
  [file normalize "${origin_dir}/src/pcileech_tlps128_bar_controller.sv"]\
  [file normalize "${origin_dir}/src/pcileech_tlps128_cfgspace_shadow_advanced.sv"]\
- [file normalize "${origin_dir}/src/pcileech_75t484_x1_vmd_top.sv"]\
+ [file normalize "${origin_dir}/src/pcileech_tlps128_monitor.sv"]\
+ [file normalize "${origin_dir}/src/pcileech_tlps128_multifunc_controller.sv"]\
+ [file normalize "${origin_dir}/src/pcileech_bar_impl_vmd_msix.sv"]\
+ [file normalize "${origin_dir}/src/pcileech_bar_impl_zerowrite4k.sv"]\
+ [file normalize "${origin_dir}/src/pcileech_mem_wrap_multi.sv"]\
  [file normalize "${origin_dir}/src/pcileech_rw1c_register.sv"]\
  [file normalize "${origin_dir}/src/pcileech_pcie_tlps128_status.sv"]\
- [file normalize "${origin_dir}/src/pcileech_tlps128_monitor.sv"]\
- [file normalize "${origin_dir}/src/pcileech_mem_wrap_multi.sv"]\
- [file normalize "${origin_dir}/src/pcileech_tlps128_multifunc_controller.sv"]\
+ [file normalize "${origin_dir}/src/pcileech_75t484_x1_vmd_top.sv"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_axi_basic_rx.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_axi_basic_rx_null_gen.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_axi_basic_rx_pipeline.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_axi_basic_top.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_axi_basic_tx.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_axi_basic_tx_pipeline.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_axi_basic_tx_thrtl_ctl.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_core_top.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_gt_common.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_gt_rx_valid_filter_7x.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_gt_top.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_gt_wrapper.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_gtp_cpllpd_ovrd.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_gtp_pipe_drp.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_gtp_pipe_rate.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_gtp_pipe_reset.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_gtx_cpllpd_ovrd.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_pcie_7x.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_pcie_bram_7x.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_pcie_bram_top_7x.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_pcie_brams_7x.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_pcie_pipe_lane.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_pcie_pipe_misc.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_pcie_pipe_pipeline.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_pcie_top.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_pcie2_top.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_pipe_clock.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_pipe_drp.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_pipe_eq.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_pipe_rate.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_pipe_reset.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_pipe_sync.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_pipe_user.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_pipe_wrapper.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_qpll_drp.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_qpll_reset.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_qpll_wrapper.v"]\
+ [file normalize "${origin_dir}/pcie_7x/pcie_7x_0_rxeq_scan.v"]\
 ]
 set imported_files [import_files -fileset sources_1 $files]
+
+# Set 'sources_1' fileset file properties for remote files
+# None
 
 # Set 'sources_1' fileset file properties for local files
 set file "src/pcileech_header.svh"
@@ -166,7 +210,23 @@ set file "src/pcileech_tlps128_cfgspace_shadow_advanced.sv"
 set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
 set_property -name "file_type" -value "SystemVerilog" -objects $file_obj
 
-set file "src/pcileech_75t484_x1_vmd_top.sv"
+set file "src/pcileech_tlps128_monitor.sv"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "SystemVerilog" -objects $file_obj
+
+set file "src/pcileech_tlps128_multifunc_controller.sv"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "SystemVerilog" -objects $file_obj
+
+set file "src/pcileech_bar_impl_vmd_msix.sv"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "SystemVerilog" -objects $file_obj
+
+set file "src/pcileech_bar_impl_zerowrite4k.sv"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "SystemVerilog" -objects $file_obj
+
+set file "src/pcileech_mem_wrap_multi.sv"
 set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
 set_property -name "file_type" -value "SystemVerilog" -objects $file_obj
 
@@ -178,17 +238,165 @@ set file "src/pcileech_pcie_tlps128_status.sv"
 set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
 set_property -name "file_type" -value "SystemVerilog" -objects $file_obj
 
-set file "src/pcileech_tlps128_monitor.sv"
+set file "src/pcileech_75t484_x1_vmd_top.sv"
 set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
 set_property -name "file_type" -value "SystemVerilog" -objects $file_obj
 
-set file "src/pcileech_mem_wrap_multi.sv"
+set file "pcie_7x/pcie_7x_0.v"
 set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
-set_property -name "file_type" -value "SystemVerilog" -objects $file_obj
+set_property -name "file_type" -value "Verilog" -objects $file_obj
 
-set file "src/pcileech_tlps128_multifunc_controller.sv"
+set file "pcie_7x/pcie_7x_0_axi_basic_rx.v"
 set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
-set_property -name "file_type" -value "SystemVerilog" -objects $file_obj
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_axi_basic_rx_null_gen.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_axi_basic_rx_pipeline.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_axi_basic_top.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_axi_basic_tx.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_axi_basic_tx_pipeline.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_axi_basic_tx_thrtl_ctl.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_core_top.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_gt_common.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_gt_rx_valid_filter_7x.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_gt_top.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_gt_wrapper.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_gtp_cpllpd_ovrd.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_gtp_pipe_drp.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_gtp_pipe_rate.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_gtp_pipe_reset.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_gtx_cpllpd_ovrd.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_pcie_7x.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_pcie_bram_7x.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_pcie_bram_top_7x.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_pcie_brams_7x.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_pcie_pipe_lane.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_pcie_pipe_misc.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_pcie_pipe_pipeline.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_pcie_top.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_pcie2_top.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_pipe_clock.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_pipe_drp.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_pipe_eq.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_pipe_rate.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_pipe_reset.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_pipe_sync.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_pipe_user.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_pipe_wrapper.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_qpll_drp.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_qpll_reset.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_qpll_wrapper.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
+
+set file "pcie_7x/pcie_7x_0_rxeq_scan.v"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "file_type" -value "Verilog" -objects $file_obj
 
 # Set 'sources_1' fileset properties
 set obj [get_filesets sources_1]
@@ -450,25 +658,6 @@ if { ![get_property "is_locked" $file_obj] } {
 set obj [get_filesets sources_1]
 # Import local files from the original project
 set files [list \
- [file normalize "${origin_dir}/ip/pcie_7x_0.xci"]\
-]
-set imported_files [import_files -fileset sources_1 $files]
-# Set 'sources_1' fileset file properties for remote files
-# None
-# Set 'sources_1' fileset file properties for local files
-set file "pcie_7x_0/pcie_7x_0.xci"
-set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
-set_property -name "generate_files_for_reference" -value "0" -objects $file_obj
-set_property -name "registered_with_manager" -value "1" -objects $file_obj
-if { ![get_property "is_locked" $file_obj] } {
-  set_property -name "synth_checkpoint_mode" -value "Singular" -objects $file_obj
-}
-
-
-# Set 'sources_1' fileset object
-set obj [get_filesets sources_1]
-# Import local files from the original project
-set files [list \
  [file normalize "${origin_dir}/ip/fifo_64_64.xci"]\
 ]
 set imported_files [import_files -fileset sources_1 $files]
@@ -646,6 +835,225 @@ set_property -name "strategy" -value "Vivado Synthesis Defaults" -objects $obj
 # set the current synth run
 current_run -synthesis [get_runs synth_1]
 
+# Create 'impl_1' run (if not found)
+if {[string equal [get_runs -quiet impl_1] ""]} {
+    create_run -name impl_1 -part xc7a75tfgg484-2 -flow {Vivado Implementation 2022} -strategy "Vivado Implementation Defaults" -report_strategy {No Reports} -constrset constrs_1 -parent_run synth_1
+} else {
+  set_property strategy "Vivado Implementation Defaults" [get_runs impl_1]
+  set_property flow "Vivado Implementation 2022" [get_runs impl_1]
+}
+set obj [get_runs impl_1]
+set_property set_report_strategy_name 1 $obj
+set_property report_strategy {Vivado Implementation Default Reports} $obj
+set_property set_report_strategy_name 0 $obj
+# Create 'impl_1_init_report_timing_summary_0' report (if not found)
+if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_init_report_timing_summary_0] "" ] } {
+  create_report_config -report_name impl_1_init_report_timing_summary_0 -report_type report_timing_summary:1.0 -steps init_design -runs impl_1
+}
+set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_init_report_timing_summary_0]
+if { $obj != "" } {
+set_property -name "is_enabled" -value "0" -objects $obj
+set_property -name "options.max_paths" -value "10" -objects $obj
+
+}
+# Create 'impl_1_opt_report_drc_0' report (if not found)
+if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_opt_report_drc_0] "" ] } {
+  create_report_config -report_name impl_1_opt_report_drc_0 -report_type report_drc:1.0 -steps opt_design -runs impl_1
+}
+set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_opt_report_drc_0]
+if { $obj != "" } {
+
+}
+# Create 'impl_1_opt_report_timing_summary_0' report (if not found)
+if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_opt_report_timing_summary_0] "" ] } {
+  create_report_config -report_name impl_1_opt_report_timing_summary_0 -report_type report_timing_summary:1.0 -steps opt_design -runs impl_1
+}
+set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_opt_report_timing_summary_0]
+if { $obj != "" } {
+set_property -name "is_enabled" -value "0" -objects $obj
+set_property -name "options.max_paths" -value "10" -objects $obj
+
+}
+# Create 'impl_1_power_opt_report_timing_summary_0' report (if not found)
+if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_power_opt_report_timing_summary_0] "" ] } {
+  create_report_config -report_name impl_1_power_opt_report_timing_summary_0 -report_type report_timing_summary:1.0 -steps power_opt_design -runs impl_1
+}
+set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_power_opt_report_timing_summary_0]
+if { $obj != "" } {
+set_property -name "is_enabled" -value "0" -objects $obj
+set_property -name "options.max_paths" -value "10" -objects $obj
+
+}
+# Create 'impl_1_place_report_io_0' report (if not found)
+if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_place_report_io_0] "" ] } {
+  create_report_config -report_name impl_1_place_report_io_0 -report_type report_io:1.0 -steps place_design -runs impl_1
+}
+set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_place_report_io_0]
+if { $obj != "" } {
+
+}
+# Create 'impl_1_place_report_utilization_0' report (if not found)
+if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_place_report_utilization_0] "" ] } {
+  create_report_config -report_name impl_1_place_report_utilization_0 -report_type report_utilization:1.0 -steps place_design -runs impl_1
+}
+set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_place_report_utilization_0]
+if { $obj != "" } {
+
+}
+# Create 'impl_1_place_report_control_sets_0' report (if not found)
+if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_place_report_control_sets_0] "" ] } {
+  create_report_config -report_name impl_1_place_report_control_sets_0 -report_type report_control_sets:1.0 -steps place_design -runs impl_1
+}
+set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_place_report_control_sets_0]
+if { $obj != "" } {
+set_property -name "options.verbose" -value "1" -objects $obj
+
+}
+# Create 'impl_1_place_report_incremental_reuse_0' report (if not found)
+if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_place_report_incremental_reuse_0] "" ] } {
+  create_report_config -report_name impl_1_place_report_incremental_reuse_0 -report_type report_incremental_reuse:1.0 -steps place_design -runs impl_1
+}
+set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_place_report_incremental_reuse_0]
+if { $obj != "" } {
+set_property -name "is_enabled" -value "0" -objects $obj
+
+}
+# Create 'impl_1_place_report_incremental_reuse_1' report (if not found)
+if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_place_report_incremental_reuse_1] "" ] } {
+  create_report_config -report_name impl_1_place_report_incremental_reuse_1 -report_type report_incremental_reuse:1.0 -steps place_design -runs impl_1
+}
+set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_place_report_incremental_reuse_1]
+if { $obj != "" } {
+set_property -name "is_enabled" -value "0" -objects $obj
+
+}
+# Create 'impl_1_place_report_timing_summary_0' report (if not found)
+if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_place_report_timing_summary_0] "" ] } {
+  create_report_config -report_name impl_1_place_report_timing_summary_0 -report_type report_timing_summary:1.0 -steps place_design -runs impl_1
+}
+set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_place_report_timing_summary_0]
+if { $obj != "" } {
+set_property -name "is_enabled" -value "0" -objects $obj
+set_property -name "options.max_paths" -value "10" -objects $obj
+
+}
+# Create 'impl_1_post_place_power_opt_report_timing_summary_0' report (if not found)
+if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_post_place_power_opt_report_timing_summary_0] "" ] } {
+  create_report_config -report_name impl_1_post_place_power_opt_report_timing_summary_0 -report_type report_timing_summary:1.0 -steps post_place_power_opt_design -runs impl_1
+}
+set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_post_place_power_opt_report_timing_summary_0]
+if { $obj != "" } {
+set_property -name "is_enabled" -value "0" -objects $obj
+set_property -name "options.max_paths" -value "10" -objects $obj
+
+}
+# Create 'impl_1_phys_opt_report_timing_summary_0' report (if not found)
+if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_phys_opt_report_timing_summary_0] "" ] } {
+  create_report_config -report_name impl_1_phys_opt_report_timing_summary_0 -report_type report_timing_summary:1.0 -steps phys_opt_design -runs impl_1
+}
+set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_phys_opt_report_timing_summary_0]
+if { $obj != "" } {
+set_property -name "is_enabled" -value "0" -objects $obj
+set_property -name "options.max_paths" -value "10" -objects $obj
+
+}
+# Create 'impl_1_route_report_drc_0' report (if not found)
+if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_drc_0] "" ] } {
+  create_report_config -report_name impl_1_route_report_drc_0 -report_type report_drc:1.0 -steps route_design -runs impl_1
+}
+set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_drc_0]
+if { $obj != "" } {
+
+}
+# Create 'impl_1_route_report_methodology_0' report (if not found)
+if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_methodology_0] "" ] } {
+  create_report_config -report_name impl_1_route_report_methodology_0 -report_type report_methodology:1.0 -steps route_design -runs impl_1
+}
+set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_methodology_0]
+if { $obj != "" } {
+
+}
+# Create 'impl_1_route_report_power_0' report (if not found)
+if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_power_0] "" ] } {
+  create_report_config -report_name impl_1_route_report_power_0 -report_type report_power:1.0 -steps route_design -runs impl_1
+}
+set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_power_0]
+if { $obj != "" } {
+
+}
+# Create 'impl_1_route_report_route_status_0' report (if not found)
+if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_route_status_0] "" ] } {
+  create_report_config -report_name impl_1_route_report_route_status_0 -report_type report_route_status:1.0 -steps route_design -runs impl_1
+}
+set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_route_status_0]
+if { $obj != "" } {
+
+}
+# Create 'impl_1_route_report_timing_summary_0' report (if not found)
+if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_timing_summary_0] "" ] } {
+  create_report_config -report_name impl_1_route_report_timing_summary_0 -report_type report_timing_summary:1.0 -steps route_design -runs impl_1
+}
+set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_timing_summary_0]
+if { $obj != "" } {
+set_property -name "options.max_paths" -value "10" -objects $obj
+
+}
+# Create 'impl_1_route_report_incremental_reuse_0' report (if not found)
+if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_incremental_reuse_0] "" ] } {
+  create_report_config -report_name impl_1_route_report_incremental_reuse_0 -report_type report_incremental_reuse:1.0 -steps route_design -runs impl_1
+}
+set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_incremental_reuse_0]
+if { $obj != "" } {
+
+}
+# Create 'impl_1_route_report_clock_utilization_0' report (if not found)
+if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_clock_utilization_0] "" ] } {
+  create_report_config -report_name impl_1_route_report_clock_utilization_0 -report_type report_clock_utilization:1.0 -steps route_design -runs impl_1
+}
+set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_clock_utilization_0]
+if { $obj != "" } {
+
+}
+# Create 'impl_1_route_report_bus_skew_0' report (if not found)
+if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_bus_skew_0] "" ] } {
+  create_report_config -report_name impl_1_route_report_bus_skew_0 -report_type report_bus_skew:1.1 -steps route_design -runs impl_1
+}
+set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_bus_skew_0]
+if { $obj != "" } {
+set_property -name "options.warn_on_violation" -value "1" -objects $obj
+
+}
+# Create 'impl_1_post_route_phys_opt_report_timing_summary_0' report (if not found)
+if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_post_route_phys_opt_report_timing_summary_0] "" ] } {
+  create_report_config -report_name impl_1_post_route_phys_opt_report_timing_summary_0 -report_type report_timing_summary:1.0 -steps post_route_phys_opt_design -runs impl_1
+}
+set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_post_route_phys_opt_report_timing_summary_0]
+if { $obj != "" } {
+set_property -name "options.max_paths" -value "10" -objects $obj
+set_property -name "options.warn_on_violation" -value "1" -objects $obj
+
+}
+# Create 'impl_1_post_route_phys_opt_report_bus_skew_0' report (if not found)
+if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_post_route_phys_opt_report_bus_skew_0] "" ] } {
+  create_report_config -report_name impl_1_post_route_phys_opt_report_bus_skew_0 -report_type report_bus_skew:1.1 -steps post_route_phys_opt_design -runs impl_1
+}
+set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_post_route_phys_opt_report_bus_skew_0]
+if { $obj != "" } {
+set_property -name "options.warn_on_violation" -value "1" -objects $obj
+
+}
+set obj [get_runs impl_1]
+set_property -name "part" -value "xc7a75tfgg484-2" -objects $obj
+set_property -name "strategy" -value "Vivado Implementation Defaults" -objects $obj
+set_property -name "steps.phys_opt_design.is_enabled" -value "1" -objects $obj
+set_property -name "steps.write_bitstream.args.bin_file" -value "1" -objects $obj
+set_property -name "steps.write_bitstream.args.readback_file" -value "0" -objects $obj
+set_property -name "steps.write_bitstream.args.verbose" -value "0" -objects $obj
+
+# set the current impl run
+current_run -implementation [get_runs impl_1]
+
+puts "INFO: Project created:${_xil_proj_name_}"
 # Create 'drc_1' gadget (if not found)
 if {[string equal [get_dashboard_gadgets  [ list "drc_1" ] ] ""]} {
 create_dashboard_gadget -name {drc_1} -type drc
@@ -696,194 +1104,3 @@ move_dashboard_gadget -name {drc_1} -row 2 -col 0
 move_dashboard_gadget -name {timing_1} -row 0 -col 1
 move_dashboard_gadget -name {utilization_2} -row 1 -col 1
 move_dashboard_gadget -name {methodology_1} -row 2 -col 1
-
-# Create 'impl_1' run (if not found)
-if {[string equal [get_runs -quiet impl_1] ""]} {
-  create_run -name impl_1 -part xc7a75tfgg484-2 -flow {Vivado Implementation 2022} -strategy "Vivado Implementation Defaults" -report_strategy {No Reports} -constrset constrs_1 -parent_run synth_1
-} else {
-  set_property strategy "Vivado Implementation Defaults" [get_runs impl_1]
-  set_property flow "Vivado Implementation 2022" [get_runs impl_1]
-}
-set obj [get_runs impl_1]
-set_property set_report_strategy_name 1 $obj
-set_property report_strategy {Vivado Implementation Default Reports} $obj
-set_property set_report_strategy_name 0 $obj
-# Create 'impl_1_init_report_timing_summary_0' report (if not found)
-if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_init_report_timing_summary_0] "" ] } {
-  create_report_config -report_name impl_1_init_report_timing_summary_0 -report_type report_timing_summary:1.0 -steps init_design -runs impl_1
-}
-set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_init_report_timing_summary_0]
-if { $obj != "" } {
-  set_property -name "is_enabled" -value "0" -objects $obj
-  set_property -name "options.max_paths" -value "10" -objects $obj
-}
-# Create 'impl_1_opt_report_drc_0' report (if not found)
-if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_opt_report_drc_0] "" ] } {
-  create_report_config -report_name impl_1_opt_report_drc_0 -report_type report_drc:1.0 -steps opt_design -runs impl_1
-}
-set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_opt_report_drc_0]
-if { $obj != "" } {
-}
-# Create 'impl_1_opt_report_timing_summary_0' report (if not found)
-if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_opt_report_timing_summary_0] "" ] } {
-  create_report_config -report_name impl_1_opt_report_timing_summary_0 -report_type report_timing_summary:1.0 -steps opt_design -runs impl_1
-}
-set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_opt_report_timing_summary_0]
-if { $obj != "" } {
-  set_property -name "is_enabled" -value "0" -objects $obj
-  set_property -name "options.max_paths" -value "10" -objects $obj
-}
-# Create 'impl_1_power_opt_report_timing_summary_0' report (if not found)
-if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_power_opt_report_timing_summary_0] "" ] } {
-  create_report_config -report_name impl_1_power_opt_report_timing_summary_0 -report_type report_timing_summary:1.0 -steps power_opt_design -runs impl_1
-}
-set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_power_opt_report_timing_summary_0]
-if { $obj != "" } {
-  set_property -name "is_enabled" -value "0" -objects $obj
-  set_property -name "options.max_paths" -value "10" -objects $obj
-}
-# Create 'impl_1_place_report_io_0' report (if not found)
-if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_place_report_io_0] "" ] } {
-  create_report_config -report_name impl_1_place_report_io_0 -report_type report_io:1.0 -steps place_design -runs impl_1
-}
-set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_place_report_io_0]
-if { $obj != "" } {
-}
-# Create 'impl_1_place_report_utilization_0' report (if not found)
-if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_place_report_utilization_0] "" ] } {
-  create_report_config -report_name impl_1_place_report_utilization_0 -report_type report_utilization:1.0 -steps place_design -runs impl_1
-}
-set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_place_report_utilization_0]
-if { $obj != "" } {
-}
-# Create 'impl_1_place_report_control_sets_0' report (if not found)
-if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_place_report_control_sets_0] "" ] } {
-  create_report_config -report_name impl_1_place_report_control_sets_0 -report_type report_control_sets:1.0 -steps place_design -runs impl_1
-}
-set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_place_report_control_sets_0]
-if { $obj != "" } {
-  set_property -name "options.verbose" -value "1" -objects $obj
-}
-# Create 'impl_1_place_report_incremental_reuse_0' report (if not found)
-if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_place_report_incremental_reuse_0] "" ] } {
-  create_report_config -report_name impl_1_place_report_incremental_reuse_0 -report_type report_incremental_reuse:1.0 -steps place_design -runs impl_1
-}
-set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_place_report_incremental_reuse_0]
-if { $obj != "" } {
-  set_property -name "is_enabled" -value "0" -objects $obj
-}
-# Create 'impl_1_place_report_incremental_reuse_1' report (if not found)
-if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_place_report_incremental_reuse_1] "" ] } {
-  create_report_config -report_name impl_1_place_report_incremental_reuse_1 -report_type report_incremental_reuse:1.0 -steps place_design -runs impl_1
-}
-set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_place_report_incremental_reuse_1]
-if { $obj != "" } {
-  set_property -name "is_enabled" -value "0" -objects $obj
-}
-# Create 'impl_1_place_report_timing_summary_0' report (if not found)
-if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_place_report_timing_summary_0] "" ] } {
-  create_report_config -report_name impl_1_place_report_timing_summary_0 -report_type report_timing_summary:1.0 -steps place_design -runs impl_1
-}
-set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_place_report_timing_summary_0]
-if { $obj != "" } {
-  set_property -name "is_enabled" -value "0" -objects $obj
-  set_property -name "options.max_paths" -value "10" -objects $obj
-}
-# Create 'impl_1_post_place_power_opt_report_timing_summary_0' report (if not found)
-if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_post_place_power_opt_report_timing_summary_0] "" ] } {
-  create_report_config -report_name impl_1_post_place_power_opt_report_timing_summary_0 -report_type report_timing_summary:1.0 -steps post_place_power_opt_design -runs impl_1
-}
-set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_post_place_power_opt_report_timing_summary_0]
-if { $obj != "" } {
-  set_property -name "is_enabled" -value "0" -objects $obj
-  set_property -name "options.max_paths" -value "10" -objects $obj
-}
-# Create 'impl_1_phys_opt_report_timing_summary_0' report (if not found)
-if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_phys_opt_report_timing_summary_0] "" ] } {
-  create_report_config -report_name impl_1_phys_opt_report_timing_summary_0 -report_type report_timing_summary:1.0 -steps phys_opt_design -runs impl_1
-}
-set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_phys_opt_report_timing_summary_0]
-if { $obj != "" } {
-  set_property -name "is_enabled" -value "0" -objects $obj
-  set_property -name "options.max_paths" -value "10" -objects $obj
-}
-# Create 'impl_1_route_report_drc_0' report (if not found)
-if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_drc_0] "" ] } {
-  create_report_config -report_name impl_1_route_report_drc_0 -report_type report_drc:1.0 -steps route_design -runs impl_1
-}
-set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_drc_0]
-if { $obj != "" } {
-}
-# Create 'impl_1_route_report_methodology_0' report (if not found)
-if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_methodology_0] "" ] } {
-  create_report_config -report_name impl_1_route_report_methodology_0 -report_type report_methodology:1.0 -steps route_design -runs impl_1
-}
-set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_methodology_0]
-if { $obj != "" } {
-}
-# Create 'impl_1_route_report_power_0' report (if not found)
-if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_power_0] "" ] } {
-  create_report_config -report_name impl_1_route_report_power_0 -report_type report_power:1.0 -steps route_design -runs impl_1
-}
-set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_power_0]
-if { $obj != "" } {
-}
-# Create 'impl_1_route_report_route_status_0' report (if not found)
-if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_route_status_0] "" ] } {
-  create_report_config -report_name impl_1_route_report_route_status_0 -report_type report_route_status:1.0 -steps route_design -runs impl_1
-}
-set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_route_status_0]
-if { $obj != "" } {
-}
-# Create 'impl_1_route_report_timing_summary_0' report (if not found)
-if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_timing_summary_0] "" ] } {
-  create_report_config -report_name impl_1_route_report_timing_summary_0 -report_type report_timing_summary:1.0 -steps route_design -runs impl_1
-}
-set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_timing_summary_0]
-if { $obj != "" } {
-  set_property -name "options.max_paths" -value "10" -objects $obj
-}
-# Create 'impl_1_route_report_incremental_reuse_0' report (if not found)
-if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_incremental_reuse_0] "" ] } {
-  create_report_config -report_name impl_1_route_report_incremental_reuse_0 -report_type report_incremental_reuse:1.0 -steps route_design -runs impl_1
-}
-set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_incremental_reuse_0]
-if { $obj != "" } {
-}
-# Create 'impl_1_route_report_clock_utilization_0' report (if not found)
-if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_clock_utilization_0] "" ] } {
-  create_report_config -report_name impl_1_route_report_clock_utilization_0 -report_type report_clock_utilization:1.0 -steps route_design -runs impl_1
-}
-set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_clock_utilization_0]
-if { $obj != "" } {
-}
-# Create 'impl_1_route_report_bus_skew_0' report (if not found)
-if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_bus_skew_0] "" ] } {
-  create_report_config -report_name impl_1_route_report_bus_skew_0 -report_type report_bus_skew:1.1 -steps route_design -runs impl_1
-}
-set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_route_report_bus_skew_0]
-if { $obj != "" } {
-  set_property -name "options.warn_on_violation" -value "1" -objects $obj
-}
-# Create 'impl_1_post_route_phys_opt_report_timing_summary_0' report (if not found)
-if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_post_route_phys_opt_report_timing_summary_0] "" ] } {
-  create_report_config -report_name impl_1_post_route_phys_opt_report_timing_summary_0 -report_type report_timing_summary:1.0 -steps post_route_phys_opt_design -runs impl_1
-}
-set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_post_route_phys_opt_report_timing_summary_0]
-if { $obj != "" } {
-  set_property -name "options.max_paths" -value "10" -objects $obj
-  set_property -name "options.warn_on_violation" -value "1" -objects $obj
-}
-# Create 'impl_1_post_route_phys_opt_report_bus_skew_0' report (if not found)
-if { [ string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_post_route_phys_opt_report_bus_skew_0] "" ] } {
-  create_report_config -report_name impl_1_post_route_phys_opt_report_bus_skew_0 -report_type report_bus_skew:1.1 -steps post_route_phys_opt_design -runs impl_1
-}
-set obj [get_report_configs -of_objects [get_runs impl_1] impl_1_post_route_phys_opt_report_bus_skew_0]
-if { $obj != "" } {
-  set_property -name "options.warn_on_violation" -value "1" -objects $obj
-}
-
-# set the current impl run
-current_run -implementation [get_runs impl_1]
-
-puts "INFO: Project created: ${_xil_proj_name_}"

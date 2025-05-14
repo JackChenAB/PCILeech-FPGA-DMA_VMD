@@ -33,10 +33,11 @@ This project is a PCILeech FPGA implementation based on the Xilinx Artix-7 XC7A7
 - **Module Interface Fix** - Fixed inconsistencies between pcileech_com and pcie_a7 module interfaces to ensure stable data flow
 - **IP Core Optimization** - Fixed configuration space memory depth, supporting more complete VMD capability sets
 - **Security Enhancement** - Added access pattern recognition and dynamic response control mechanisms
-- **Stealth Mode** - Implemented TLP echo and scan detection functions to counter security monitoring
+- **Stealth Mode Enhancement** - Improved TLP echo and scan detection functions with multiple response strategies and access pattern analysis
 - **State Machine Improvements** - Fixed timeout handling logic for various module state machines
 - **RW1C Register Implementation** - Added PCIe-compliant RW1C register modules specifically for handling status registers, improving compatibility
 - **Redundancy Protection** - Enhanced register access pattern monitoring, optimized system response mechanisms, ensuring device stability
+- **ZeroWrite4K Optimization** - Enhanced BAR implementation stealth capabilities with multiple response modes and adaptive counter recovery mechanisms
 
 ## Technical Principles
 
@@ -65,6 +66,7 @@ This project implements VMD controller simulation through the following methods:
 - **pcileech_tlps128_cfgspace_shadow_advanced.sv** - Enhanced configuration space, supporting access pattern analysis
 - **pcileech_pcie_tlp_a7.sv** - TLP processing core, supporting echo and stealth modes
 - **pcileech_bar_impl_vmd_msix.sv** - Implements BAR with MSI-X interrupt functionality, supporting VMD controllers and NVMe command processing
+- **pcileech_bar_impl_zerowrite4k.sv** - Implements 4KB BAR with stealth functionality, supporting dynamic response and anomaly detection
 - **pcileech_rw1c_register.sv** - Standard PCIe RW1C register implementation, providing status register operation functionality
 - **pcileech_pcie_tlps128_status.sv** - PCIe TLP device status register module, using RW1C to process status bits
 - **pcileech_tlps128_monitor.sv** - Access monitoring module, providing system stability support
@@ -118,7 +120,7 @@ The latest version significantly enhances VMD controller functionality:
 
 ## Build Instructions
 
-1. Install Xilinx Vivado Design Suite (2022.1 or higher recommended)
+1. Install Xilinx Vivado Design Suite (2021.2)
 2. Run the following command in Vivado Tcl Shell to generate the project:
    ```
    source vivado_generate_project_captaindma_75t.tcl -notrace
@@ -205,14 +207,19 @@ The latest version adds the following security features:
 1. **Access Pattern Analysis** - Monitors system access patterns to VMD devices, identifying abnormal scanning behaviors
 2. **Dynamic Response Control** - Automatically adjusts response strategies based on access patterns, countering security detection
 3. **TLP Echo Functionality** - Supports echoing received TLP packets, implementing communication disguise
-4. **Stealth Mode** - Activated when system scanning is detected, reducing detection risk
-5. **Standard RW1C Registers** - Implements PCIe-compliant RW1C (Read-Write 1 to Clear) registers:
+4. **Multi-level Stealth Mode** - Implements three response modes (Normal/Camouflage/Deceptive) that automatically switch based on detected system behavior
+5. **Adaptive Recovery Mechanism** - Automatically restores device state after long periods of inactivity, preventing permanent lockups
+6. **Standard RW1C Registers** - Implements PCIe-compliant RW1C (Read-Write 1 to Clear) registers:
    - Supports correct "write 1 to clear" operations, handling PCIe status registers
    - Built-in multiple state (normal, warning, recovery, error) automatic handling mechanisms
    - Hardware event setting interface, allowing hardware to automatically set corresponding status bits
    - Access pattern monitoring functionality, ensuring device stable operation
-6. **Interface Code Isolation** - Optimizes interface definitions between modules, increasing code isolation, enhancing security
-7. **Abnormal Access Protection** - Detects and responds to non-standard register access patterns, protecting devices from being identified by security scanning tools
+7. **Interface Code Isolation** - Optimizes interface definitions between modules, increasing code isolation, enhancing security
+8. **Abnormal Access Protection** - Detects and responds to non-standard register access patterns, protecting devices from being identified by security scanning tools
+9. **ZeroWrite4K Enhancement** - Implements intelligent memory write filtering system:
+   - Only writes to critical regions are actually stored
+   - Non-critical region writes are ignored but return success
+   - Supports critical region configuration and dynamic adjustment
 
 ## License Information
 
